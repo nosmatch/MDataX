@@ -1,9 +1,9 @@
-package com.mogu.data.controller;
+package com.mogu.data.system.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mogu.data.common.Result;
-import com.mogu.data.entity.OperationLog;
-import com.mogu.data.service.OperationLogService;
+import com.mogu.data.system.entity.OperationLog;
+import com.mogu.data.system.service.OperationLogService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;

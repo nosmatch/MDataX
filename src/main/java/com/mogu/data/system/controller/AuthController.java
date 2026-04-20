@@ -1,9 +1,9 @@
-package com.mogu.data.controller;
+package com.mogu.data.system.controller;
 
 import com.mogu.data.common.JwtUtils;
 import com.mogu.data.common.Result;
-import com.mogu.data.entity.User;
-import com.mogu.data.service.UserService;
+import com.mogu.data.system.entity.User;
+import com.mogu.data.system.service.UserService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;

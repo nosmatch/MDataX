@@ -1,7 +1,7 @@
-package com.mogu.data.mapper;
+package com.mogu.data.system.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.mogu.data.entity.RolePermission;
+import com.mogu.data.system.entity.RolePermission;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;

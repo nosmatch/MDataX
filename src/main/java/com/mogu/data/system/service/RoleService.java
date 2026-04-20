@@ -1,14 +1,14 @@
-package com.mogu.data.service;
+package com.mogu.data.system.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.mogu.data.entity.Role;
-import com.mogu.data.entity.RolePermission;
-import com.mogu.data.entity.UserRole;
-import com.mogu.data.mapper.RoleMapper;
-import com.mogu.data.mapper.RolePermissionMapper;
-import com.mogu.data.mapper.UserRoleMapper;
+import com.mogu.data.system.entity.Role;
+import com.mogu.data.system.entity.RolePermission;
+import com.mogu.data.system.entity.UserRole;
+import com.mogu.data.system.mapper.RoleMapper;
+import com.mogu.data.system.mapper.RolePermissionMapper;
+import com.mogu.data.system.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;

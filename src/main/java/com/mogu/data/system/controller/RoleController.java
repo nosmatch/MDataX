@@ -1,10 +1,10 @@
-package com.mogu.data.controller;
+package com.mogu.data.system.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mogu.data.common.Result;
-import com.mogu.data.entity.Role;
-import com.mogu.data.entity.RolePermission;
-import com.mogu.data.service.RoleService;
+import com.mogu.data.system.entity.Role;
+import com.mogu.data.system.entity.RolePermission;
+import com.mogu.data.system.service.RoleService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.validation.annotation.Validated;

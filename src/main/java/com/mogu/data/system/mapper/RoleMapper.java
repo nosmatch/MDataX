@@ -1,7 +1,7 @@
-package com.mogu.data.mapper;
+package com.mogu.data.system.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.mogu.data.entity.Role;
+import com.mogu.data.system.entity.Role;
 import org.apache.ibatis.annotations.Mapper;
 
 /**

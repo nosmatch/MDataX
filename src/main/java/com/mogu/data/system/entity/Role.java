@@ -1,4 +1,4 @@
-package com.mogu.data.entity;
+package com.mogu.data.system.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -11,25 +11,22 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * 系统用户实体
+ * 系统角色实体
  *
  * @author fengzhu
  */
 @Data
-@TableName("sys_user")
-public class User {
+@TableName("sys_role")
+public class Role {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private String username;
+    private String roleName;
 
-    @JsonIgnore
-    private String password;
+    private String roleCode;
 
-    private String nickname;
-
-    private String email;
+    private String description;
 
     private Integer status;
 

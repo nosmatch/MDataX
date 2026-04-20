@@ -1,12 +1,12 @@
-package com.mogu.data.service;
+package com.mogu.data.system.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.mogu.data.entity.User;
-import com.mogu.data.entity.UserRole;
-import com.mogu.data.mapper.UserMapper;
-import com.mogu.data.mapper.UserRoleMapper;
+import com.mogu.data.system.entity.User;
+import com.mogu.data.system.entity.UserRole;
+import com.mogu.data.system.mapper.UserMapper;
+import com.mogu.data.system.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;

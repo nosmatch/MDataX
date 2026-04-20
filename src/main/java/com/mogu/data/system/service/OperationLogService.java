@@ -1,10 +1,10 @@
-package com.mogu.data.service;
+package com.mogu.data.system.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.mogu.data.entity.OperationLog;
-import com.mogu.data.mapper.OperationLogMapper;
+import com.mogu.data.system.entity.OperationLog;
+import com.mogu.data.system.mapper.OperationLogMapper;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 

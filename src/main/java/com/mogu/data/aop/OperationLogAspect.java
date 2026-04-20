@@ -2,8 +2,8 @@ package com.mogu.data.aop;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mogu.data.common.LoginUser;
-import com.mogu.data.entity.OperationLog;
-import com.mogu.data.mapper.OperationLogMapper;
+import com.mogu.data.system.entity.OperationLog;
+import com.mogu.data.system.mapper.OperationLogMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.ProceedingJoinPoint;
@@ -38,7 +38,7 @@ public class OperationLogAspect {
     public void writeOperation() {
     }
 
-    @Pointcut("execution(* com.mogu.data.controller.*.*(..))")
+    @Pointcut("execution(* com.mogu.data..controller.*.*(..))")
     public void controllerPointcut() {
     }
 

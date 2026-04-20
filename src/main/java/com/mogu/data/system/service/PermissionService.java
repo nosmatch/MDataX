@@ -1,7 +1,7 @@
-package com.mogu.data.service;
+package com.mogu.data.system.service;
 
-import com.mogu.data.entity.RolePermission;
-import com.mogu.data.mapper.RolePermissionMapper;
+import com.mogu.data.system.entity.RolePermission;
+import com.mogu.data.system.mapper.RolePermissionMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 

@@ -1,8 +1,8 @@
-package com.mogu.data.controller;
+package com.mogu.data.system.controller;
 
 import com.mogu.data.common.LoginUser;
 import com.mogu.data.common.Result;
-import com.mogu.data.service.PermissionService;
+import com.mogu.data.system.service.PermissionService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
