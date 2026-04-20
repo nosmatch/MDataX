@@ -16,6 +16,7 @@ import com.mogu.data.query.vo.QueryResultVO;
 import com.mogu.data.system.service.PermissionService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -27,6 +28,7 @@ import java.util.stream.Collectors;
  *
  * @author fengzhu
  */
+@Slf4j
 @RestController
 @RequestMapping("/metadata")
 @RequiredArgsConstructor
@@ -83,7 +85,21 @@ public class MetadataTableController {
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) String keyword) {
-        return Result.success(tableService.pageTables(keyword, page, size));
+        Page<TablePageVO> result = tableService.pageTables(keyword, page, size);
+        Long userId = LoginUser.currentUserId();
+        log.info("数据目录分页查询 - userId={}, 表数量={}", userId, result.getRecords().size());
+        if (userId == null) {
+            log.warn("数据目录分页查询 - userId 为 null，权限将全部为 false");
+        }
+        for (TablePageVO vo : result.getRecords()) {
+            String fullName = vo.getDatabaseName() + "." + vo.getTableName();
+            boolean read = permissionService.hasReadPermission(userId, fullName);
+            boolean write = permissionService.hasWritePermission(userId, fullName);
+            vo.setRead(read);
+            vo.setWrite(write);
+            log.debug("表 {} - read={}, write={}", fullName, read, write);
+        }
+        return Result.success(result);
     }
 
     /**

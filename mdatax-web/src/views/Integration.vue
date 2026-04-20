@@ -1,6 +1,719 @@
 <template>
-  <div>
-    <h2>数据集成</h2>
-    <p>数据源管理、同步任务</p>
+  <div class="integration-page">
+    <div class="page-header">
+      <h2>数据集成</h2>
+    </div>
+
+    <el-tabs v-model="activeTab" type="border-card">
+      <!-- 数据源管理 -->
+      <el-tab-pane label="数据源管理" name="datasource">
+        <div class="tab-content">
+          <div class="tab-toolbar">
+            <el-input
+              v-model="dsKeyword"
+              placeholder="搜索数据源名称"
+              clearable
+              style="width: 300px"
+              @keyup.enter="fetchDatasources"
+            >
+              <template #append>
+                <el-button @click="fetchDatasources">
+                  <el-icon><Search /></el-icon>
+                </el-button>
+              </template>
+            </el-input>
+            <el-button type="primary" @click="openDsDialog">
+              <el-icon><Plus /></el-icon> 新增数据源
+            </el-button>
+          </div>
+
+          <el-table :data="dsList" v-loading="dsLoading" stripe>
+            <el-table-column prop="name" label="数据源名称" min-width="160" />
+            <el-table-column prop="type" label="类型" width="100" />
+            <el-table-column prop="host" label="主机地址" min-width="160" />
+            <el-table-column prop="port" label="端口" width="80" />
+            <el-table-column prop="databaseName" label="数据库名" min-width="140" />
+            <el-table-column prop="username" label="用户名" min-width="120" />
+            <el-table-column prop="status" label="状态" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
+                  {{ row.status === 1 ? '启用' : '禁用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="createTime" label="创建时间" min-width="160" />
+            <el-table-column label="操作" width="240" fixed="right">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="handleDsTest(row)">
+                  测试连接
+                </el-button>
+                <el-button type="primary" link size="small" @click="handleDsEdit(row)">
+                  编辑
+                </el-button>
+                <el-button type="danger" link size="small" @click="handleDsDelete(row)">
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="dsPage"
+              v-model:page-size="dsSize"
+              :total="dsTotal"
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next"
+              @size-change="fetchDatasources"
+              @current-change="fetchDatasources"
+            />
+          </div>
+        </div>
+      </el-tab-pane>
+
+      <!-- 同步任务 -->
+      <el-tab-pane label="同步任务" name="task">
+        <div class="tab-content">
+          <div class="tab-toolbar">
+            <el-input
+              v-model="taskKeyword"
+              placeholder="搜索任务名称"
+              clearable
+              style="width: 300px"
+              @keyup.enter="fetchTasks"
+            >
+              <template #append>
+                <el-button @click="fetchTasks">
+                  <el-icon><Search /></el-icon>
+                </el-button>
+              </template>
+            </el-input>
+            <el-button type="primary" @click="openTaskDialog">
+              <el-icon><Plus /></el-icon> 新建同步任务
+            </el-button>
+          </div>
+
+          <el-table :data="taskList" v-loading="taskLoading" stripe>
+            <el-table-column prop="taskName" label="任务名称" min-width="180" />
+            <el-table-column prop="datasourceName" label="数据源" min-width="140" />
+            <el-table-column prop="sourceTable" label="来源表" min-width="140" />
+            <el-table-column prop="targetTable" label="目标表" min-width="140" />
+            <el-table-column prop="syncType" label="同步类型" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.syncType === 'FULL' ? 'primary' : 'warning'" size="small">
+                  {{ row.syncType === 'FULL' ? '全量' : '增量' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
+                  {{ row.status === 1 ? '启用' : '停用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="lastSyncTime" label="最后同步" min-width="160" />
+            <el-table-column prop="createTime" label="创建时间" min-width="160" />
+            <el-table-column label="操作" width="300" fixed="right">
+              <template #default="{ row }">
+                <el-button type="success" link size="small" :loading="executingId === row.id" @click="handleTaskExecute(row)">
+                  执行同步
+                </el-button>
+                <el-button type="info" link size="small" @click="openLogDialog(row)">
+                  日志
+                </el-button>
+                <el-button type="primary" link size="small" @click="handleTaskToggle(row)">
+                  {{ row.status === 1 ? '停用' : '启用' }}
+                </el-button>
+                <el-button type="primary" link size="small" @click="handleTaskEdit(row)">
+                  编辑
+                </el-button>
+                <el-button type="danger" link size="small" @click="handleTaskDelete(row)">
+                  删除
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="taskPage"
+              v-model:page-size="taskSize"
+              :total="taskTotal"
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next"
+              @size-change="fetchTasks"
+              @current-change="fetchTasks"
+            />
+          </div>
+        </div>
+      </el-tab-pane>
+    </el-tabs>
+
+    <!-- 数据源对话框 -->
+    <el-dialog
+      v-model="dsDialogVisible"
+      :title="isDsEdit ? '编辑数据源' : '新增数据源'"
+      width="560px"
+      :close-on-click-modal="false"
+    >
+      <el-form ref="dsFormRef" :model="dsForm" :rules="dsRules" label-width="100px">
+        <el-form-item label="数据源名称" prop="name">
+          <el-input v-model="dsForm.name" placeholder="请输入数据源名称" />
+        </el-form-item>
+        <el-form-item label="类型" prop="type">
+          <el-select v-model="dsForm.type" placeholder="请选择类型" style="width: 100%">
+            <el-option label="MySQL" value="MySQL" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="主机地址" prop="host">
+          <el-input v-model="dsForm.host" placeholder="例如: 127.0.0.1" />
+        </el-form-item>
+        <el-form-item label="端口" prop="port">
+          <el-input-number v-model="dsForm.port" :min="1" :max="65535" style="width: 100%" />
+        </el-form-item>
+        <el-form-item label="数据库名" prop="databaseName">
+          <el-input v-model="dsForm.databaseName" placeholder="请输入数据库名" />
+        </el-form-item>
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="dsForm.username" placeholder="请输入用户名" />
+        </el-form-item>
+        <el-form-item label="密码" prop="password">
+          <el-input v-model="dsForm.password" type="password" show-password placeholder="请输入密码" />
+        </el-form-item>
+        <el-form-item v-if="isDsEdit" label="状态">
+          <el-radio-group v-model="dsForm.status">
+            <el-radio :label="1">启用</el-radio>
+            <el-radio :label="0">禁用</el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="dsDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="dsTesting" @click="handleDsTestBeforeSave">
+          测试连接
+        </el-button>
+        <el-button type="primary" :loading="dsSaving" @click="handleDsSave">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 同步日志对话框 -->
+    <el-dialog
+      v-model="logDialogVisible"
+      title="同步日志"
+      width="720px"
+      :close-on-click-modal="false"
+    >
+      <el-table :data="logList" v-loading="logLoading" stripe size="small">
+        <el-table-column prop="startTime" label="开始时间" min-width="160" />
+        <el-table-column prop="endTime" label="结束时间" min-width="160" />
+        <el-table-column prop="status" label="状态" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag
+              :type="row.status === 'SUCCESS' ? 'success' : row.status === 'RUNNING' ? 'warning' : 'danger'"
+              size="small"
+            >
+              {{ row.status === 'SUCCESS' ? '成功' : row.status === 'RUNNING' ? '运行中' : '失败' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="rowCount" label="同步行数" width="100" align="right" />
+        <el-table-column prop="message" label="消息" min-width="200" show-overflow-tooltip />
+      </el-table>
+      <div class="pagination-wrapper">
+        <el-pagination
+          v-model:current-page="logPage"
+          v-model:page-size="logSize"
+          :total="logTotal"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next"
+          @size-change="fetchLogs"
+          @current-change="fetchLogs"
+        />
+      </div>
+    </el-dialog>
+
+    <!-- 同步任务对话框 -->
+    <el-dialog
+      v-model="taskDialogVisible"
+      :title="isTaskEdit ? '编辑同步任务' : '新建同步任务'"
+      width="600px"
+      :close-on-click-modal="false"
+    >
+      <el-form ref="taskFormRef" :model="taskForm" :rules="taskRules" label-width="110px">
+        <el-form-item label="任务名称" prop="taskName">
+          <el-input v-model="taskForm.taskName" placeholder="请输入任务名称" />
+        </el-form-item>
+        <el-form-item label="数据源" prop="datasourceId">
+          <el-select
+            v-model="taskForm.datasourceId"
+            placeholder="请选择数据源"
+            style="width: 100%"
+            @change="onDatasourceChange"
+          >
+            <el-option
+              v-for="ds in allDatasources"
+              :key="ds.id"
+              :label="ds.name"
+              :value="ds.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="来源表" prop="sourceTable">
+          <el-select
+            v-model="taskForm.sourceTable"
+            placeholder="先选择数据源"
+            style="width: 100%"
+            :disabled="!taskForm.datasourceId || tableOptionsLoading"
+            :loading="tableOptionsLoading"
+          >
+            <el-option
+              v-for="t in tableOptions"
+              :key="t"
+              :label="t"
+              :value="t"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="目标表" prop="targetTable">
+          <el-input v-model="taskForm.targetTable" placeholder="ClickHouse 中的目标表名" />
+        </el-form-item>
+        <el-form-item label="同步类型" prop="syncType">
+          <el-radio-group v-model="taskForm.syncType">
+            <el-radio label="FULL">全量同步</el-radio>
+            <el-radio label="INCREMENTAL">增量同步</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item
+          v-if="taskForm.syncType === 'INCREMENTAL'"
+          label="时间字段"
+          prop="timeField"
+        >
+          <el-input v-model="taskForm.timeField" placeholder="用于增量判断的时间字段名" />
+        </el-form-item>
+        <el-form-item label="Cron表达式" prop="cronExpression">
+          <el-input v-model="taskForm.cronExpression" placeholder="例如: 0 0 2 * * ?" />
+        </el-form-item>
+        <el-form-item v-if="isTaskEdit" label="状态">
+          <el-radio-group v-model="taskForm.status">
+            <el-radio :label="1">启用</el-radio>
+            <el-radio :label="0">停用</el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="taskDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="taskSaving" @click="handleTaskSave">
+          保存
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
+
+<script setup>
+import { ref, reactive, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Plus, Search } from '@element-plus/icons-vue'
+import request from '../utils/request.js'
+
+// ===== Tab =====
+const activeTab = ref('datasource')
+
+// ===== 数据源 =====
+const dsLoading = ref(false)
+const dsKeyword = ref('')
+const dsList = ref([])
+const dsPage = ref(1)
+const dsSize = ref(10)
+const dsTotal = ref(0)
+
+const dsDialogVisible = ref(false)
+const isDsEdit = ref(false)
+const dsSaving = ref(false)
+const dsTesting = ref(false)
+const dsFormRef = ref(null)
+
+const dsForm = reactive({
+  id: null,
+  name: '',
+  type: 'MySQL',
+  host: '',
+  port: 3306,
+  databaseName: '',
+  username: '',
+  password: '',
+  status: 1
+})
+
+const dsRules = {
+  name: [{ required: true, message: '请输入数据源名称', trigger: 'blur' }],
+  type: [{ required: true, message: '请选择类型', trigger: 'change' }],
+  host: [{ required: true, message: '请输入主机地址', trigger: 'blur' }],
+  port: [{ required: true, message: '请输入端口', trigger: 'blur' }],
+  databaseName: [{ required: true, message: '请输入数据库名', trigger: 'blur' }],
+  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
+  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+}
+
+const resetDsForm = () => {
+  dsForm.id = null
+  dsForm.name = ''
+  dsForm.type = 'MySQL'
+  dsForm.host = ''
+  dsForm.port = 3306
+  dsForm.databaseName = ''
+  dsForm.username = ''
+  dsForm.password = ''
+  dsForm.status = 1
+}
+
+const fetchDatasources = async () => {
+  dsLoading.value = true
+  try {
+    const res = await request.get('/datasource/page', {
+      params: { page: dsPage.value, size: dsSize.value, keyword: dsKeyword.value }
+    })
+    dsList.value = res.data.records
+    dsTotal.value = res.data.total
+  } catch (error) {
+    ElMessage.error(error.message || '获取数据失败')
+  } finally {
+    dsLoading.value = false
+  }
+}
+
+const openDsDialog = () => {
+  isDsEdit.value = false
+  resetDsForm()
+  dsDialogVisible.value = true
+}
+
+const handleDsEdit = (row) => {
+  isDsEdit.value = true
+  Object.assign(dsForm, row)
+  dsDialogVisible.value = true
+}
+
+const doTestConnection = async (payload) => {
+  dsTesting.value = true
+  try {
+    const res = await request.post('/datasource/test', payload)
+    if (res.data.success) {
+      ElMessage.success(res.data.message)
+      return true
+    } else {
+      ElMessage.error(res.data.message)
+      return false
+    }
+  } catch (error) {
+    ElMessage.error(error.message || '测试连接失败')
+    return false
+  } finally {
+    dsTesting.value = false
+  }
+}
+
+const handleDsTest = async (row) => {
+  await doTestConnection({
+    host: row.host, port: row.port, databaseName: row.databaseName,
+    username: row.username, password: row.password
+  })
+}
+
+const handleDsTestBeforeSave = async () => {
+  const valid = await dsFormRef.value.validate().catch(() => false)
+  if (!valid) return
+  await doTestConnection({
+    host: dsForm.host, port: dsForm.port, databaseName: dsForm.databaseName,
+    username: dsForm.username, password: dsForm.password
+  })
+}
+
+const handleDsSave = async () => {
+  const valid = await dsFormRef.value.validate().catch(() => false)
+  if (!valid) return
+  dsSaving.value = true
+  try {
+    if (isDsEdit.value) {
+      await request.put(`/datasource/${dsForm.id}`, {
+        name: dsForm.name, host: dsForm.host, port: dsForm.port,
+        databaseName: dsForm.databaseName, username: dsForm.username,
+        password: dsForm.password, status: dsForm.status
+      })
+      ElMessage.success('更新成功')
+    } else {
+      await request.post('/datasource', {
+        name: dsForm.name, type: dsForm.type, host: dsForm.host, port: dsForm.port,
+        databaseName: dsForm.databaseName, username: dsForm.username, password: dsForm.password
+      })
+      ElMessage.success('创建成功')
+    }
+    dsDialogVisible.value = false
+    fetchDatasources()
+  } catch (error) {
+    ElMessage.error(error.message || '保存失败')
+  } finally {
+    dsSaving.value = false
+  }
+}
+
+const handleDsDelete = (row) => {
+  ElMessageBox.confirm(`确定删除数据源 "${row.name}" 吗？`, '提示', {
+    confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
+  }).then(async () => {
+    try {
+      await request.delete(`/datasource/${row.id}`)
+      ElMessage.success('删除成功')
+      fetchDatasources()
+    } catch (error) {
+      ElMessage.error(error.message || '删除失败')
+    }
+  }).catch(() => {})
+}
+
+// ===== 同步任务 =====
+const taskLoading = ref(false)
+const taskKeyword = ref('')
+const taskList = ref([])
+const taskPage = ref(1)
+const taskSize = ref(10)
+const taskTotal = ref(0)
+
+const taskDialogVisible = ref(false)
+const isTaskEdit = ref(false)
+const taskSaving = ref(false)
+const taskFormRef = ref(null)
+const allDatasources = ref([])
+const tableOptions = ref([])
+const tableOptionsLoading = ref(false)
+
+const executingId = ref(null)
+
+const taskForm = reactive({
+  id: null,
+  taskName: '',
+  datasourceId: null,
+  sourceTable: '',
+  targetTable: '',
+  syncType: 'FULL',
+  timeField: '',
+  cronExpression: '',
+  status: 0
+})
+
+const logDialogVisible = ref(false)
+const logLoading = ref(false)
+const logList = ref([])
+const logPage = ref(1)
+const logSize = ref(10)
+const logTotal = ref(0)
+const currentLogTaskId = ref(null)
+
+const taskRules = {
+  taskName: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
+  datasourceId: [{ required: true, message: '请选择数据源', trigger: 'change' }],
+  sourceTable: [{ required: true, message: '请选择来源表', trigger: 'change' }],
+  targetTable: [{ required: true, message: '请输入目标表', trigger: 'blur' }],
+  syncType: [{ required: true, message: '请选择同步类型', trigger: 'change' }],
+  timeField: [{ required: true, message: '请输入时间字段', trigger: 'blur' }]
+}
+
+const resetTaskForm = () => {
+  taskForm.id = null
+  taskForm.taskName = ''
+  taskForm.datasourceId = null
+  taskForm.sourceTable = ''
+  taskForm.targetTable = ''
+  taskForm.syncType = 'FULL'
+  taskForm.timeField = ''
+  taskForm.cronExpression = ''
+  taskForm.status = 0
+  tableOptions.value = []
+}
+
+const fetchTasks = async () => {
+  taskLoading.value = true
+  try {
+    const res = await request.get('/sync-task/page', {
+      params: { page: taskPage.value, size: taskSize.value, keyword: taskKeyword.value }
+    })
+    taskList.value = res.data.records
+    taskTotal.value = res.data.total
+  } catch (error) {
+    ElMessage.error(error.message || '获取数据失败')
+  } finally {
+    taskLoading.value = false
+  }
+}
+
+const loadAllDatasources = async () => {
+  try {
+    const res = await request.get('/datasource/list')
+    allDatasources.value = res.data || []
+  } catch (error) {
+    ElMessage.error(error.message || '加载数据源失败')
+  }
+}
+
+const onDatasourceChange = async (datasourceId) => {
+  taskForm.sourceTable = ''
+  tableOptions.value = []
+  if (!datasourceId) return
+  tableOptionsLoading.value = true
+  try {
+    const res = await request.get(`/sync-task/datasource/${datasourceId}/tables`)
+    tableOptions.value = res.data || []
+  } catch (error) {
+    ElMessage.error(error.message || '加载表列表失败')
+  } finally {
+    tableOptionsLoading.value = false
+  }
+}
+
+const openTaskDialog = async () => {
+  isTaskEdit.value = false
+  resetTaskForm()
+  await loadAllDatasources()
+  taskDialogVisible.value = true
+}
+
+const handleTaskEdit = async (row) => {
+  isTaskEdit.value = true
+  resetTaskForm()
+  await loadAllDatasources()
+  Object.assign(taskForm, row)
+  if (taskForm.datasourceId) {
+    await onDatasourceChange(taskForm.datasourceId)
+  }
+  taskDialogVisible.value = true
+}
+
+const handleTaskSave = async () => {
+  const valid = await taskFormRef.value.validate().catch(() => false)
+  if (!valid) return
+  taskSaving.value = true
+  try {
+    const payload = {
+      taskName: taskForm.taskName,
+      datasourceId: taskForm.datasourceId,
+      sourceTable: taskForm.sourceTable,
+      targetTable: taskForm.targetTable,
+      syncType: taskForm.syncType,
+      timeField: taskForm.syncType === 'INCREMENTAL' ? taskForm.timeField : null,
+      cronExpression: taskForm.cronExpression || null
+    }
+    if (isTaskEdit.value) {
+      await request.put(`/sync-task/${taskForm.id}`, { ...payload, status: taskForm.status })
+      ElMessage.success('更新成功')
+    } else {
+      await request.post('/sync-task', payload)
+      ElMessage.success('创建成功')
+    }
+    taskDialogVisible.value = false
+    fetchTasks()
+  } catch (error) {
+    ElMessage.error(error.message || '保存失败')
+  } finally {
+    taskSaving.value = false
+  }
+}
+
+const handleTaskToggle = async (row) => {
+  try {
+    await request.post(`/sync-task/${row.id}/toggle`)
+    ElMessage.success('操作成功')
+    fetchTasks()
+  } catch (error) {
+    ElMessage.error(error.message || '操作失败')
+  }
+}
+
+const handleTaskDelete = (row) => {
+  ElMessageBox.confirm(`确定删除同步任务 "${row.taskName}" 吗？`, '提示', {
+    confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
+  }).then(async () => {
+    try {
+      await request.delete(`/sync-task/${row.id}`)
+      ElMessage.success('删除成功')
+      fetchTasks()
+    } catch (error) {
+      ElMessage.error(error.message || '删除失败')
+    }
+  }).catch(() => {})
+}
+
+const handleTaskExecute = async (row) => {
+  executingId.value = row.id
+  try {
+    await request.post(`/sync-task/${row.id}/execute`)
+    ElMessage.success('同步任务执行成功')
+    fetchTasks()
+  } catch (error) {
+    ElMessage.error(error.message || '同步任务执行失败')
+  } finally {
+    executingId.value = null
+  }
+}
+
+const openLogDialog = (row) => {
+  currentLogTaskId.value = row.id
+  logPage.value = 1
+  logDialogVisible.value = true
+  fetchLogs()
+}
+
+const fetchLogs = async () => {
+  if (!currentLogTaskId.value) return
+  logLoading.value = true
+  try {
+    const res = await request.get(`/sync-task/${currentLogTaskId.value}/logs`, {
+      params: { page: logPage.value, size: logSize.value }
+    })
+    logList.value = res.data.records
+    logTotal.value = res.data.total
+  } catch (error) {
+    ElMessage.error(error.message || '获取日志失败')
+  } finally {
+    logLoading.value = false
+  }
+}
+
+onMounted(() => {
+  fetchDatasources()
+  fetchTasks()
+})
+</script>
+
+<style scoped>
+.integration-page {
+  padding-bottom: 20px;
+}
+.page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.page-header h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+.tab-content {
+  padding: 8px 0;
+}
+.tab-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+.pagination-wrapper {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
+}
+</style>

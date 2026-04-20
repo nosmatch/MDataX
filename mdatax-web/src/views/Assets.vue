@@ -40,6 +40,20 @@
         </el-table-column>
         <el-table-column prop="tableComment" label="描述" min-width="180" show-overflow-tooltip />
         <el-table-column prop="ownerName" label="责任人" min-width="100" />
+        <el-table-column label="读权限" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.read ? 'success' : 'danger'" size="small">
+              {{ row.read ? '有' : '无' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="写权限" width="90" align="center">
+          <template #default="{ row }">
+            <el-tag :type="row.write ? 'success' : 'danger'" size="small">
+              {{ row.write ? '有' : '无' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="createTime" label="创建时间" min-width="160" />
       </el-table>
 
