@@ -1,0 +1,19 @@
+spring:
+  application:
+    name: MDataX
+  profiles:
+    active: dev
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    default-property-inclusion: non_null
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+logging:
+  level:
+    com.mogu.data.mapper: debug
+    com.clickhouse.jdbc: debug
