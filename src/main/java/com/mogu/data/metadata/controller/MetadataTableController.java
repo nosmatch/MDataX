@@ -11,12 +11,16 @@ import com.mogu.data.metadata.service.MetadataTableService;
 import com.mogu.data.metadata.vo.TableDetailVO;
 import com.mogu.data.metadata.vo.TablePageVO;
 import com.mogu.data.metadata.vo.TablePermissionVO;
+import com.mogu.data.query.service.QueryService;
+import com.mogu.data.query.vo.QueryResultVO;
 import com.mogu.data.system.service.PermissionService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 元数据管理控制器
@@ -32,6 +36,7 @@ public class MetadataTableController {
     private final MetadataTableMapper tableMapper;
     private final MetadataTableService tableService;
     private final PermissionService permissionService;
+    private final QueryService queryService;
 
     /**
      * 手动触发 ClickHouse 元数据采集
@@ -48,6 +53,26 @@ public class MetadataTableController {
     @GetMapping("/tables/all")
     public Result<List<MetadataTable>> listAll() {
         return Result.success(tableService.listAllTables());
+    }
+
+    /**
+     * 获取当前用户有读权限的表列表
+     */
+    @GetMapping("/tables/accessible")
+    public Result<List<MetadataTable>> listAccessible() {
+        Long userId = LoginUser.currentUserId();
+        Set<String> readable = permissionService.getReadableTables(userId);
+        if (readable == null || readable.isEmpty()) {
+            return Result.success(java.util.Collections.emptyList());
+        }
+        List<MetadataTable> all = tableService.listAllTables();
+        if (readable.contains("*")) {
+            return Result.success(all);
+        }
+        List<MetadataTable> accessible = all.stream()
+                .filter(t -> readable.contains(t.getDatabaseName() + "." + t.getTableName()))
+                .collect(Collectors.toList());
+        return Result.success(accessible);
     }
 
     /**
@@ -116,6 +141,27 @@ public class MetadataTableController {
         table.setOwnerId(request.getOwnerId());
         tableMapper.updateById(table);
         return Result.success();
+    }
+
+    /**
+     * 表数据预览（前100条）
+     */
+    @GetMapping("/tables/{id}/preview")
+    public Result<QueryResultVO> preview(@PathVariable Long id) {
+        MetadataTable table = tableMapper.selectById(id);
+        if (table == null || table.getDeleted() != null && table.getDeleted() == 1) {
+            return Result.error("表不存在");
+        }
+
+        Long userId = LoginUser.currentUserId();
+        String fullTableName = table.getDatabaseName() + "." + table.getTableName();
+        if (!permissionService.hasReadPermission(userId, fullTableName)) {
+            return Result.error("无权限预览该表");
+        }
+
+        String sql = "SELECT * FROM " + fullTableName + " LIMIT 100";
+        QueryResultVO vo = queryService.execute(sql, userId);
+        return Result.success(vo);
     }
 
     @Data

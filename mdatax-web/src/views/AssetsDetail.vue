@@ -34,7 +34,24 @@
         </el-descriptions>
       </el-tab-pane>
 
-      <!-- Tab3: 权限信息 -->
+      <!-- Tab3: 数据预览 -->
+      <el-tab-pane label="数据预览" name="preview">
+        <div v-loading="loadingPreview">
+          <el-table :data="previewRows" stripe v-if="previewColumns.length > 0">
+            <el-table-column
+              v-for="col in previewColumns"
+              :key="col"
+              :prop="col"
+              :label="col"
+              min-width="160"
+              show-overflow-tooltip
+            />
+          </el-table>
+          <el-empty v-else description="暂无数据" />
+        </div>
+      </el-tab-pane>
+
+      <!-- Tab4: 权限信息 -->
       <el-tab-pane label="权限信息" name="permission">
         <div v-loading="loadingPermission">
           <el-descriptions :column="1" border>
@@ -68,10 +85,13 @@ const tableId = route.params.id
 const activeTab = ref('columns')
 const loadingColumns = ref(false)
 const loadingPermission = ref(false)
+const loadingPreview = ref(false)
 
 const tableInfo = ref({})
 const columns = ref([])
 const permission = ref({ read: false, write: false })
+const previewColumns = ref([])
+const previewRows = ref([])
 
 const fetchTableInfo = async () => {
   try {
@@ -106,6 +126,19 @@ const fetchPermission = async () => {
   }
 }
 
+const fetchPreview = async () => {
+  loadingPreview.value = true
+  try {
+    const res = await request.get(`/metadata/tables/${tableId}/preview`)
+    previewColumns.value = res.data.columns || []
+    previewRows.value = res.data.rows || []
+  } catch (error) {
+    ElMessage.error(error.message || '获取数据预览失败')
+  } finally {
+    loadingPreview.value = false
+  }
+}
+
 const goBack = () => {
   router.back()
 }
@@ -126,6 +159,7 @@ const formatBytes = (bytes) => {
 onMounted(() => {
   fetchTableInfo()
   fetchColumns()
+  fetchPreview()
   fetchPermission()
 })
 </script>
