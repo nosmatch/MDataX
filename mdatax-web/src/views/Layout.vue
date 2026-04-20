@@ -1,16 +1,16 @@
 <template>
   <div class="layout">
-    <!-- 顶部导航 -->
     <el-header class="header">
       <div class="logo">MDataX</div>
       <div class="user-info">
-        <el-dropdown>
+        <span style="margin-right: 12px">{{ displayName }}</span>
+        <el-dropdown @command="handleCommand">
           <span class="el-dropdown-link">
-            admin<el-icon class="el-icon--right"><arrow-down /></el-icon>
+            <el-icon><ArrowDown /></el-icon>
           </span>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item>退出登录</el-dropdown-item>
+              <el-dropdown-item command="logout">退出登录</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -18,7 +18,6 @@
     </el-header>
 
     <div class="main-container">
-      <!-- 左侧菜单 -->
       <el-aside class="aside" width="200px">
         <el-menu
           :default-active="$route.path"
@@ -59,7 +58,6 @@
         </el-menu>
       </el-aside>
 
-      <!-- 主工作区 -->
       <el-main class="main">
         <router-view />
       </el-main>
@@ -68,7 +66,26 @@
 </template>
 
 <script setup>
+import { computed } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { useAuthStore } from '../stores/auth.js'
 import { HomeFilled, Connection, Document, Folder, Search, Lock, Setting, ArrowDown } from '@element-plus/icons-vue'
+
+const router = useRouter()
+const authStore = useAuthStore()
+
+const displayName = computed(() => {
+  return authStore.user?.nickname || authStore.user?.username || ''
+})
+
+const handleCommand = (cmd) => {
+  if (cmd === 'logout') {
+    authStore.clearAuth()
+    ElMessage.success('已退出登录')
+    router.push('/login')
+  }
+}
 </script>
 
 <style scoped>
@@ -77,7 +94,6 @@ import { HomeFilled, Connection, Document, Folder, Search, Lock, Setting, ArrowD
   display: flex;
   flex-direction: column;
 }
-
 .header {
   height: 50px;
   background-color: #2b2f3a;
@@ -87,32 +103,28 @@ import { HomeFilled, Connection, Document, Folder, Search, Lock, Setting, ArrowD
   justify-content: space-between;
   padding: 0 20px;
 }
-
 .logo {
   font-size: 20px;
   font-weight: bold;
 }
-
 .user-info {
   color: #fff;
   cursor: pointer;
+  display: flex;
+  align-items: center;
 }
-
 .main-container {
   display: flex;
   flex: 1;
   overflow: hidden;
 }
-
 .aside {
   background-color: #304156;
 }
-
 .menu {
   border-right: none;
   height: 100%;
 }
-
 .main {
   background-color: #f0f2f5;
   padding: 20px;

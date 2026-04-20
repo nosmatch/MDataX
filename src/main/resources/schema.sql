@@ -2,6 +2,21 @@
 -- 前置条件：mdatax 数据库已创建
 -- CREATE DATABASE mdatax DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
+-- 开发阶段：每次启动清理旧表重建
+DROP TABLE IF EXISTS sys_operation_log;
+DROP TABLE IF EXISTS sys_role_permission;
+DROP TABLE IF EXISTS sys_user_role;
+DROP TABLE IF EXISTS sys_user;
+DROP TABLE IF EXISTS sys_role;
+DROP TABLE IF EXISTS user_table_visit;
+DROP TABLE IF EXISTS metadata_column;
+DROP TABLE IF EXISTS metadata_table;
+DROP TABLE IF EXISTS sql_task_log;
+DROP TABLE IF EXISTS sql_task;
+DROP TABLE IF EXISTS sync_task_log;
+DROP TABLE IF EXISTS sync_task;
+DROP TABLE IF EXISTS datasource;
+
 -- 用户表
 CREATE TABLE IF NOT EXISTS sys_user (
     id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '用户ID',
@@ -49,6 +64,17 @@ CREATE TABLE IF NOT EXISTS sys_role_permission (
     UNIQUE KEY uk_role_table (role_id, table_name, permission_type),
     INDEX idx_role_id (role_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='角色权限表';
+
+-- 插入默认管理员
+INSERT INTO sys_user (username, password, nickname, email, status) VALUES
+('admin', '$2a$10$XJ7lH.xaSI/a6Jt6kmATw.WsdU/OyunA6JTdbbiDbTKPkUxyaR6M2', '管理员', 'admin@mdatax.com', 1)
+ON DUPLICATE KEY UPDATE id = id;
+
+-- 插入默认角色
+INSERT INTO sys_role (role_name, role_code, description, status) VALUES
+('管理员', 'admin', '系统管理员，拥有所有权限', 1),
+('数据分析师', 'analyst', '数据分析人员，可查询数据', 1)
+ON DUPLICATE KEY UPDATE id = id;
 
 -- 操作日志表
 CREATE TABLE IF NOT EXISTS sys_operation_log (

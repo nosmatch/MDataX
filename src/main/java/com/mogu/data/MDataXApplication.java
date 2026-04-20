@@ -1,5 +1,6 @@
 package com.mogu.data;
 
+import org.mybatis.spring.annotation.MapperScan;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
@@ -9,6 +10,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * @author fengzhu
  */
 @SpringBootApplication
+@MapperScan("com.mogu.data.mapper")
 public class MDataXApplication {
 
     public static void main(String[] args) {
