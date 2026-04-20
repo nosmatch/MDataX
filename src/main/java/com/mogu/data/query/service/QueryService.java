@@ -3,6 +3,7 @@ package com.mogu.data.query.service;
 import com.mogu.data.common.BusinessException;
 import com.mogu.data.query.vo.QueryResultVO;
 import com.mogu.data.system.service.PermissionService;
+import com.mogu.data.metadata.service.UserTableVisitService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -22,6 +23,7 @@ import java.util.regex.Pattern;
 public class QueryService {
 
     private final PermissionService permissionService;
+    private final UserTableVisitService userTableVisitService;
 
     @Qualifier("clickHouseJdbcTemplate")
     private final JdbcTemplate jdbcTemplate;
@@ -54,7 +56,15 @@ public class QueryService {
             }
         }
 
-        // 4. 默认限制100条，并附加ClickHouse执行超时设置（5秒）
+        // 4. 记录表访问
+        for (String table : tables) {
+            int dot = table.indexOf('.');
+            if (dot > 0) {
+                userTableVisitService.recordVisit(userId, table.substring(0, dot), table.substring(dot + 1));
+            }
+        }
+
+        // 5. 默认限制100条，并附加ClickHouse执行超时设置（5秒）
         String executableSql = addLimitIfNeeded(trimmed);
         if (!executableSql.toUpperCase().contains("SETTINGS")) {
             executableSql += " SETTINGS max_execution_time = 5";

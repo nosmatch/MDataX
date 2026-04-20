@@ -39,6 +39,7 @@ public class MetadataTableController {
     private final MetadataTableService tableService;
     private final PermissionService permissionService;
     private final QueryService queryService;
+    private final com.mogu.data.metadata.service.UserTableVisitService userTableVisitService;
 
     /**
      * 手动触发 ClickHouse 元数据采集
@@ -177,6 +178,7 @@ public class MetadataTableController {
 
         String sql = "SELECT * FROM " + fullTableName + " LIMIT 100";
         QueryResultVO vo = queryService.execute(sql, userId);
+        userTableVisitService.recordVisit(userId, table.getDatabaseName(), table.getTableName());
         return Result.success(vo);
     }
 
