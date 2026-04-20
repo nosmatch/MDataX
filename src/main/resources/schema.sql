@@ -1,21 +1,13 @@
 -- MDataX 元数据库初始化脚本
 -- 前置条件：mdatax 数据库已创建
 -- CREATE DATABASE mdatax DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
--- 开发阶段：每次启动清理旧表重建
-DROP TABLE IF EXISTS sys_operation_log;
-DROP TABLE IF EXISTS sys_role_permission;
-DROP TABLE IF EXISTS sys_user_role;
-DROP TABLE IF EXISTS sys_user;
-DROP TABLE IF EXISTS sys_role;
-DROP TABLE IF EXISTS user_table_visit;
-DROP TABLE IF EXISTS metadata_column;
-DROP TABLE IF EXISTS metadata_table;
-DROP TABLE IF EXISTS sql_task_log;
-DROP TABLE IF EXISTS sql_task;
-DROP TABLE IF EXISTS sync_task_log;
-DROP TABLE IF EXISTS sync_task;
-DROP TABLE IF EXISTS datasource;
+--
+-- 使用说明：
+--   1. 首次部署：手动执行此脚本创建所有表
+--   2. 表结构变更：在 schema-update/ 目录下创建增量脚本，按需手动执行
+--   3. 禁止 DROP TABLE：生产环境数据不可丢失
+--
+-- 当前脚本已移除 DROP TABLE，仅保留 CREATE TABLE IF NOT EXISTS
 
 -- 用户表
 CREATE TABLE IF NOT EXISTS sys_user (
@@ -178,6 +170,7 @@ CREATE TABLE IF NOT EXISTS metadata_table (
     engine VARCHAR(64) DEFAULT NULL COMMENT '引擎',
     total_rows BIGINT DEFAULT NULL COMMENT '数据行数',
     total_bytes BIGINT DEFAULT NULL COMMENT '数据大小(字节)',
+    owner_id BIGINT DEFAULT 1 COMMENT '责任人ID',
     deleted TINYINT DEFAULT 0 COMMENT '删除标记',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',

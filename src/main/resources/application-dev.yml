@@ -20,8 +20,7 @@ spring:
 
   sql:
     init:
-      mode: always
-      schema-locations: classpath:schema.sql
+      mode: never
 
 # ClickHouse 配置（自定义数据源）
 clickhouse:

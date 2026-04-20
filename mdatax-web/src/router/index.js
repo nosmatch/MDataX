@@ -16,6 +16,7 @@ const routes = [
             { path: 'integration', name: 'DataIntegration', component: () => import('../views/Integration.vue') },
             { path: 'development', name: 'DataDevelopment', component: () => import('../views/Development.vue') },
             { path: 'assets', name: 'DataAssets', component: () => import('../views/Assets.vue') },
+            { path: 'assets/detail/:id', name: 'AssetsDetail', component: () => import('../views/AssetsDetail.vue') },
             { path: 'query', name: 'DataQuery', component: () => import('../views/Query.vue') },
             { path: 'permission', name: 'Permission', component: () => import('../views/Permission.vue') },
             { path: 'system', name: 'System', component: () => import('../views/System.vue') },

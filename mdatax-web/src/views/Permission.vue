@@ -43,8 +43,8 @@
             </div>
           </template>
 
-          <el-table :data="tablePermissions" border style="width: 100%">
-            <el-table-column prop="tableName" label="表名" min-width="200" />
+          <el-table :data="tablePermissions" border v-loading="loading" style="width: 100%">
+            <el-table-column prop="tableName" label="表名" min-width="280" />
             <el-table-column label="读权限" width="120" align="center">
               <template #default="{ row }">
                 <el-checkbox v-model="row.read" />
@@ -75,6 +75,8 @@ const selectedRoleId = ref(null)
 const selectedRole = computed(() => roles.value.find(r => r.id === selectedRoleId.value))
 const tablePermissions = ref([])
 const saving = ref(false)
+const loading = ref(false)
+const allTables = ref([])
 
 const filteredRoles = computed(() => {
   if (!roleKeyword.value) return roles.value
@@ -90,20 +92,51 @@ const loadRoles = async () => {
   }
 }
 
+const loadAllTables = async () => {
+  try {
+    const res = await request.get('/metadata/tables/all')
+    allTables.value = res.data || []
+  } catch (e) {
+    ElMessage.error('加载表列表失败')
+  }
+}
+
 const loadPermissions = async () => {
   if (!selectedRoleId.value) return
+  loading.value = true
   try {
-    const res = await request.get(`/role/${selectedRoleId.value}/permissions`)
-    const permissions = res.data || []
-    // 这里简化处理，实际应该从数据库获取所有表名
-    // MVP阶段先展示已有的权限，后续从metadata_table获取全部表
-    tablePermissions.value = permissions.map(p => ({
-      tableName: p.tableName,
-      read: p.permissionType === 'READ',
-      write: p.permissionType === 'WRITE'
-    }))
+    const [tablesRes, permRes] = await Promise.all([
+      request.get('/metadata/tables/all'),
+      request.get(`/role/${selectedRoleId.value}/permissions`)
+    ])
+
+    const tables = tablesRes.data || []
+    const permissions = permRes.data || []
+
+    // 构建已配置权限的查找表
+    const permMap = {}
+    permissions.forEach(p => {
+      if (!permMap[p.tableName]) {
+        permMap[p.tableName] = { read: false, write: false }
+      }
+      if (p.permissionType === 'READ') permMap[p.tableName].read = true
+      if (p.permissionType === 'WRITE') permMap[p.tableName].write = true
+    })
+
+    // 所有表合并权限状态
+    tablePermissions.value = tables.map(t => {
+      const fullName = t.databaseName + '.' + t.tableName
+      const p = permMap[fullName] || { read: false, write: false }
+      return {
+        tableName: fullName,
+        read: p.read,
+        write: p.write
+      }
+    })
   } catch (e) {
     ElMessage.error('加载权限失败')
+  } finally {
+    loading.value = false
   }
 }
 
