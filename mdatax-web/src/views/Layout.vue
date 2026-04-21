@@ -35,17 +35,18 @@
             <el-icon><Connection /></el-icon>
             <span>数据集成</span>
           </el-menu-item>
-          <el-menu-item index="/development">
-            <el-icon><Document /></el-icon>
-            <span>数据开发</span>
-          </el-menu-item>
+          <el-sub-menu index="/development">
+            <template #title>
+              <el-icon><Document /></el-icon>
+              <span>数据开发</span>
+            </template>
+            <el-menu-item index="/query">SQL查询</el-menu-item>
+            <el-menu-item index="/development">SQL开发</el-menu-item>
+            <el-menu-item index="/development/tasks">任务管理</el-menu-item>
+          </el-sub-menu>
           <el-menu-item index="/assets">
             <el-icon><Folder /></el-icon>
             <span>数据资产</span>
-          </el-menu-item>
-          <el-menu-item index="/query">
-            <el-icon><Search /></el-icon>
-            <span>数据查询</span>
           </el-menu-item>
           <el-menu-item index="/permission">
             <el-icon><Lock /></el-icon>
@@ -70,7 +71,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth.js'
-import { HomeFilled, Connection, Document, Folder, Search, Lock, Setting, ArrowDown } from '@element-plus/icons-vue'
+import { HomeFilled, Connection, Document, Folder, Lock, Setting, ArrowDown } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

@@ -12,7 +12,7 @@
           <el-card class="panel-card">
             <template #header>
               <div>
-                <span>有权限的表</span>
+                <span>可读的表</span>
                 <el-input
                   v-model="tableKeyword"
                   placeholder="搜索表"
@@ -204,25 +204,22 @@ const filteredTables = computed(() => {
 
 const loadAccessibleTables = async () => {
   try {
-    const res = await request.get('/metadata/tables/accessible')
+    const res = await request.get('/query/tables')
     tables.value = res.data || []
   } catch (error) {
     ElMessage.error(error.message || '加载表列表失败')
   }
 }
 
-const handleTableSelect = async (index) => {
+const handleTableSelect = (index) => {
   const id = Number(index)
   selectedTableId.value = id
   const t = tables.value.find(item => item.id === id)
   if (t) {
     selectedTableName.value = t.databaseName + '.' + t.tableName
-  }
-  try {
-    const res = await request.get(`/metadata/tables/${id}/columns`)
-    selectedTableColumns.value = res.data || []
-  } catch (error) {
-    ElMessage.error(error.message || '加载字段信息失败')
+    selectedTableColumns.value = t.columns || []
+  } else {
+    selectedTableName.value = ''
     selectedTableColumns.value = []
   }
 }

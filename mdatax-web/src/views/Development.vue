@@ -1,188 +1,137 @@
 <template>
   <div class="development-page">
     <div class="page-header">
-      <h2>数据开发</h2>
+      <h2>SQL 开发</h2>
+      <p class="desc">支持 SELECT、DML 及 DDL 语句，可保存为定时任务</p>
     </div>
 
-    <el-tabs v-model="activeTab" type="border-card">
-      <!-- SQL 开发 -->
-      <el-tab-pane label="SQL 开发" name="editor">
-        <div class="tab-content">
-          <el-card class="editor-card">
-            <div class="toolbar">
-              <el-button type="primary" :loading="executing" @click="executeSql">
-                <el-icon><VideoPlay /></el-icon> 执行
-              </el-button>
-              <el-button @click="formatSql">
-                <el-icon><MagicStick /></el-icon> 格式化
-              </el-button>
-              <el-button @click="clearSql">
-                <el-icon><Delete /></el-icon> 清空
-              </el-button>
-              <el-button type="success" @click="openSaveDialog">
-                <el-icon><DocumentChecked /></el-icon> 保存为任务
-              </el-button>
-            </div>
-            <div class="editor-wrapper">
-              <MonacoEditor v-model="sql" language="sql" theme="vs" :options="editorOptions" />
-            </div>
-          </el-card>
-
-          <el-card v-if="resultLoaded" class="result-card" v-loading="executing">
+    <div class="main-layout">
+      <!-- 左侧：可写的表 + 字段 -->
+      <div class="left-panel" :style="{ width: leftWidth + 'px' }">
+        <div class="table-list-area" :style="{ height: topHeight + 'px' }">
+          <el-card class="panel-card">
             <template #header>
-              <div class="result-header">
-                <span>查询结果</span>
-                <div class="result-meta">
-                  <el-tag type="info" size="small">行数: {{ result.rowCount }}</el-tag>
-                  <el-tag type="success" size="small" style="margin-left: 8px">
-                    耗时: {{ result.executionTime }}ms
-                  </el-tag>
-                </div>
+              <div>
+                <span>可写入的表</span>
+                <el-input
+                  v-model="tableKeyword"
+                  placeholder="搜索表"
+                  size="small"
+                  clearable
+                  style="margin-top: 8px"
+                />
               </div>
             </template>
-            <div class="result-table-wrapper">
-              <el-table
-                :data="result.rows"
-                stripe
-                border
-                v-if="result.columns.length > 0"
-                style="width: 100%"
+            <div class="menu-wrapper">
+              <el-menu
+                :default-active="String(selectedTableId)"
+                @select="handleTableSelect"
+                style="border-right: none"
               >
-                <el-table-column
-                  v-for="col in result.columns"
-                  :key="col"
-                  :prop="col"
-                  :label="col"
-                  min-width="160"
-                  show-overflow-tooltip
-                />
-              </el-table>
-              <el-empty v-else description="查询结果为空" />
+                <el-menu-item
+                  v-for="t in filteredTables"
+                  :key="t.id"
+                  :index="String(t.id)"
+                >
+                  {{ t.databaseName }}.{{ t.tableName }}
+                </el-menu-item>
+              </el-menu>
             </div>
           </el-card>
         </div>
-      </el-tab-pane>
 
-      <!-- 任务管理 -->
-      <el-tab-pane label="任务管理" name="list">
-        <div class="tab-content">
-          <div class="tab-toolbar">
-            <el-input
-              v-model="keyword"
-              placeholder="搜索任务名称"
-              clearable
-              style="width: 300px"
-              @keyup.enter="fetchTasks"
-            >
-              <template #append>
-                <el-button @click="fetchTasks">
-                  <el-icon><Search /></el-icon>
-                </el-button>
-              </template>
-            </el-input>
-            <el-button type="primary" @click="openCreateDialog">
-              <el-icon><Plus /></el-icon> 新建任务
+        <div class="h-divider" @mousedown="startHResize"></div>
+
+        <div class="columns-area" :style="{ height: `calc(100% - ${topHeight + 6}px)` }">
+          <el-card class="panel-card" v-if="selectedTableColumns.length > 0">
+            <template #header>
+              <span>{{ selectedTableName }} 字段</span>
+            </template>
+            <div class="table-wrapper">
+              <el-table :data="selectedTableColumns" size="small" stripe>
+                <el-table-column label="字段名" min-width="120" show-overflow-tooltip>
+                  <template #default="{ row }">
+                    <span
+                      class="copyable-field"
+                      :title="'点击复制: ' + row.columnName"
+                      @click="copyToClipboard(row.columnName)"
+                    >
+                      {{ row.columnName }}
+                    </span>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="dataType" label="类型" width="100" />
+              </el-table>
+            </div>
+          </el-card>
+          <el-empty v-else description="点击表查看字段" style="height: 100%" />
+        </div>
+      </div>
+
+      <!-- 垂直分割线 -->
+      <div class="v-divider" @mousedown="startVResize"></div>
+
+      <!-- 右侧：编辑器 + 结果 -->
+      <div class="right-panel">
+        <el-card class="editor-card">
+          <div class="toolbar">
+            <el-button type="primary" :loading="executing" @click="executeSql">
+              <el-icon><VideoPlay /></el-icon> 执行
+            </el-button>
+            <el-button @click="formatSql">
+              <el-icon><MagicStick /></el-icon> 格式化
+            </el-button>
+            <el-button @click="clearSql">
+              <el-icon><Delete /></el-icon> 清空
+            </el-button>
+            <el-button type="success" @click="openSaveDialog">
+              <el-icon><DocumentChecked /></el-icon> 保存为任务
             </el-button>
           </div>
-
-          <el-table :data="taskList" v-loading="loading" stripe>
-            <el-table-column prop="taskName" label="任务名称" min-width="180" />
-            <el-table-column prop="targetTable" label="目标表" min-width="160">
-              <template #default="{ row }">
-                {{ row.targetTable || '-' }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="cronExpression" label="Cron表达式" min-width="140">
-              <template #default="{ row }">
-                {{ row.cronExpression || '-' }}
-              </template>
-            </el-table-column>
-            <el-table-column prop="status" label="状态" width="90" align="center">
-              <template #default="{ row }">
-                <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
-                  {{ row.status === 1 ? '启用' : '停用' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="createTime" label="创建时间" min-width="160" />
-            <el-table-column label="操作" width="340" fixed="right">
-              <template #default="{ row }">
-                <el-button type="success" link size="small" :loading="executingId === row.id" @click="handleTaskExecute(row)">
-                  执行
-                </el-button>
-                <el-button type="info" link size="small" @click="openLogDialog(row)">
-                  日志
-                </el-button>
-                <el-button type="success" link size="small" @click="loadTaskToEditor(row)">
-                  编辑SQL
-                </el-button>
-                <el-button type="primary" link size="small" @click="handleToggle(row)">
-                  {{ row.status === 1 ? '停用' : '启用' }}
-                </el-button>
-                <el-button type="primary" link size="small" @click="handleEdit(row)">
-                  编辑
-                </el-button>
-                <el-button type="danger" link size="small" @click="handleDelete(row)">
-                  删除
-                </el-button>
-              </template>
-            </el-table-column>
-          </el-table>
-
-          <div class="pagination-wrapper">
-            <el-pagination
-              v-model:current-page="page"
-              v-model:page-size="size"
-              :total="total"
-              :page-sizes="[10, 20, 50]"
-              layout="total, sizes, prev, pager, next"
-              @size-change="fetchTasks"
-              @current-change="fetchTasks"
-            />
+          <div class="editor-wrapper">
+            <MonacoEditor v-model="sql" language="sql" theme="vs" :options="editorOptions" :suggestions="editorSuggestions" />
           </div>
-        </div>
-      </el-tab-pane>
-    </el-tabs>
+        </el-card>
 
-    <!-- 执行日志对话框 -->
-    <el-dialog
-      v-model="logDialogVisible"
-      title="执行日志"
-      width="720px"
-      :close-on-click-modal="false"
-    >
-      <el-table :data="logList" v-loading="logLoading" stripe size="small">
-        <el-table-column prop="startTime" label="开始时间" min-width="160" />
-        <el-table-column prop="endTime" label="结束时间" min-width="160" />
-        <el-table-column prop="status" label="状态" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag
-              :type="row.status === 'SUCCESS' ? 'success' : row.status === 'RUNNING' ? 'warning' : 'danger'"
-              size="small"
-            >
-              {{ row.status === 'SUCCESS' ? '成功' : row.status === 'RUNNING' ? '运行中' : '失败' }}
-            </el-tag>
+        <el-card v-if="resultLoaded" class="result-card" v-loading="executing">
+          <template #header>
+            <div class="result-header">
+              <span>执行结果</span>
+              <div class="result-meta">
+                <el-tag type="info" size="small">行数: {{ result.rowCount }}</el-tag>
+                <el-tag type="success" size="small" style="margin-left: 8px">
+                  耗时: {{ result.executionTime }}ms
+                </el-tag>
+              </div>
+            </div>
           </template>
-        </el-table-column>
-        <el-table-column prop="message" label="消息" min-width="200" show-overflow-tooltip />
-      </el-table>
-      <div class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="logPage"
-          v-model:page-size="logSize"
-          :total="logTotal"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
-          @size-change="fetchLogs"
-          @current-change="fetchLogs"
-        />
+          <div class="result-table-wrapper">
+            <el-table
+              :data="result.rows"
+              stripe
+              border
+              v-if="result.columns.length > 0"
+              style="width: 100%"
+            >
+              <el-table-column
+                v-for="col in result.columns"
+                :key="col"
+                :prop="col"
+                :label="col"
+                min-width="160"
+                show-overflow-tooltip
+              />
+            </el-table>
+            <el-empty v-else description="执行结果为空" />
+          </div>
+        </el-card>
       </div>
-    </el-dialog>
+    </div>
 
-    <!-- 保存/新建任务对话框 -->
+    <!-- 保存任务对话框 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="isEdit ? '编辑SQL任务' : '保存SQL任务'"
+      title="保存SQL任务"
       width="640px"
       :close-on-click-modal="false"
     >
@@ -204,12 +153,6 @@
             placeholder="请输入SQL内容"
           />
         </el-form-item>
-        <el-form-item v-if="isEdit" label="状态">
-          <el-radio-group v-model="form.status">
-            <el-radio :label="1">启用</el-radio>
-            <el-radio :label="0">停用</el-radio>
-          </el-radio-group>
-        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
@@ -222,16 +165,105 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoPlay, Delete, MagicStick, DocumentChecked, Plus, Search } from '@element-plus/icons-vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { VideoPlay, Delete, MagicStick, DocumentChecked } from '@element-plus/icons-vue'
 import { format } from 'sql-formatter'
 import MonacoEditor from '../components/MonacoEditor.vue'
 import request from '../utils/request.js'
 
-const activeTab = ref('editor')
+const route = useRoute()
 
-// ===== SQL 编辑器 =====
+// === 拖拽调整大小 ===
+const leftWidth = ref(260)
+const topHeight = ref(300)
+
+let vResizing = false
+let hResizing = false
+let startX = 0
+let startY = 0
+let startWidth = 0
+let startHeight = 0
+
+const startVResize = (e) => {
+  vResizing = true
+  startX = e.clientX
+  startWidth = leftWidth.value
+  document.addEventListener('mousemove', onVMouseMove)
+  document.addEventListener('mouseup', onVMouseUp)
+}
+
+const onVMouseMove = (e) => {
+  if (!vResizing) return
+  const delta = e.clientX - startX
+  leftWidth.value = Math.max(180, Math.min(500, startWidth + delta))
+}
+
+const onVMouseUp = () => {
+  vResizing = false
+  document.removeEventListener('mousemove', onVMouseMove)
+  document.removeEventListener('mouseup', onVMouseUp)
+}
+
+const startHResize = (e) => {
+  hResizing = true
+  startY = e.clientY
+  startHeight = topHeight.value
+  document.addEventListener('mousemove', onHMouseMove)
+  document.addEventListener('mouseup', onHMouseUp)
+}
+
+const onHMouseMove = (e) => {
+  if (!hResizing) return
+  const delta = e.clientY - startY
+  topHeight.value = Math.max(120, startHeight + delta)
+}
+
+const onHMouseUp = () => {
+  hResizing = false
+  document.removeEventListener('mousemove', onHMouseMove)
+  document.removeEventListener('mouseup', onHMouseUp)
+}
+
+// === 左侧表列表 ===
+const tables = ref([])
+const tableKeyword = ref('')
+const selectedTableId = ref(null)
+const selectedTableColumns = ref([])
+const selectedTableName = ref('')
+
+const filteredTables = computed(() => {
+  if (!tableKeyword.value) return tables.value
+  const kw = tableKeyword.value.toLowerCase()
+  return tables.value.filter(t =>
+    (t.databaseName + '.' + t.tableName).toLowerCase().includes(kw)
+  )
+})
+
+const loadWritableTables = async () => {
+  try {
+    const res = await request.get('/sql-task/tables')
+    tables.value = res.data || []
+  } catch (error) {
+    ElMessage.error(error.message || '加载表列表失败')
+  }
+}
+
+const handleTableSelect = (index) => {
+  const id = Number(index)
+  selectedTableId.value = id
+  const t = tables.value.find(item => item.id === id)
+  if (t) {
+    selectedTableName.value = t.databaseName + '.' + t.tableName
+    selectedTableColumns.value = t.columns || []
+  } else {
+    selectedTableName.value = ''
+    selectedTableColumns.value = []
+  }
+}
+
+// === SQL 编辑器 ===
 const sql = ref('')
 const executing = ref(false)
 const resultLoaded = ref(false)
@@ -240,6 +272,35 @@ const result = ref({
   rows: [],
   rowCount: 0,
   executionTime: 0
+})
+
+const SQL_KEYWORDS = [
+  'SELECT', 'FROM', 'WHERE', 'AND', 'OR', 'NOT', 'IN', 'EXISTS',
+  'BETWEEN', 'LIKE', 'IS', 'NULL', 'AS', 'JOIN', 'INNER', 'LEFT',
+  'RIGHT', 'FULL', 'OUTER', 'CROSS', 'ON', 'GROUP', 'BY', 'ORDER',
+  'HAVING', 'LIMIT', 'OFFSET', 'UNION', 'ALL', 'DISTINCT',
+  'COUNT', 'SUM', 'AVG', 'MAX', 'MIN', 'CASE', 'WHEN', 'THEN',
+  'ELSE', 'END', 'CAST', 'COALESCE', 'IF', 'WITH', 'OVER',
+  'PARTITION', 'ROW_NUMBER', 'RANK', 'DENSE_RANK',
+  'INSERT', 'INTO', 'VALUES', 'UPDATE', 'SET', 'DELETE',
+  'CREATE', 'TABLE', 'DROP', 'ALTER', 'ADD', 'COLUMN',
+  'ASC', 'DESC', 'TRUE', 'FALSE'
+]
+
+const editorSuggestions = computed(() => {
+  const list = []
+  SQL_KEYWORDS.forEach(kw => {
+    list.push({ label: kw, kind: 17, detail: '关键字', insertText: kw })
+  })
+  tables.value.forEach(t => {
+    const fullName = t.databaseName + '.' + t.tableName
+    list.push({ label: fullName, kind: 6, detail: '表', insertText: fullName })
+    list.push({ label: t.tableName, kind: 6, detail: '表 (' + fullName + ')', insertText: t.tableName })
+  })
+  selectedTableColumns.value.forEach(c => {
+    list.push({ label: c.columnName, kind: 4, detail: '字段 (' + selectedTableName.value + ')', insertText: c.columnName })
+  })
+  return list
 })
 
 const editorOptions = {
@@ -295,35 +356,24 @@ const clearSql = () => {
   resultLoaded.value = false
 }
 
-// ===== 任务管理 =====
-const loading = ref(false)
-const keyword = ref('')
-const taskList = ref([])
-const page = ref(1)
-const size = ref(10)
-const total = ref(0)
+const copyToClipboard = async (text) => {
+  try {
+    await navigator.clipboard.writeText(text)
+    ElMessage.success(`已复制: ${text}`)
+  } catch (err) {
+    ElMessage.warning('复制失败，请手动复制')
+  }
+}
 
+// === 保存任务 ===
 const dialogVisible = ref(false)
-const isEdit = ref(false)
 const saving = ref(false)
 const formRef = ref(null)
-const executingId = ref(null)
-
-const logDialogVisible = ref(false)
-const logLoading = ref(false)
-const logList = ref([])
-const logPage = ref(1)
-const logSize = ref(10)
-const logTotal = ref(0)
-const currentLogTaskId = ref(null)
-
-const form = reactive({
-  id: null,
+const form = ref({
   taskName: '',
   sqlContent: '',
   targetTable: '',
-  cronExpression: '',
-  status: 0
+  cronExpression: ''
 })
 
 const rules = {
@@ -331,54 +381,14 @@ const rules = {
   sqlContent: [{ required: true, message: '请输入SQL内容', trigger: 'blur' }]
 }
 
-const resetForm = () => {
-  form.id = null
-  form.taskName = ''
-  form.sqlContent = ''
-  form.targetTable = ''
-  form.cronExpression = ''
-  form.status = 0
-}
-
-const fetchTasks = async () => {
-  loading.value = true
-  try {
-    const res = await request.get('/sql-task/page', {
-      params: { page: page.value, size: size.value, keyword: keyword.value }
-    })
-    taskList.value = res.data.records
-    total.value = res.data.total
-  } catch (error) {
-    ElMessage.error(error.message || '获取数据失败')
-  } finally {
-    loading.value = false
-  }
-}
-
 const openSaveDialog = () => {
-  isEdit.value = false
-  resetForm()
-  form.sqlContent = sql.value
+  form.value = {
+    taskName: '',
+    sqlContent: sql.value,
+    targetTable: '',
+    cronExpression: ''
+  }
   dialogVisible.value = true
-}
-
-const openCreateDialog = () => {
-  isEdit.value = false
-  resetForm()
-  dialogVisible.value = true
-}
-
-const handleEdit = (row) => {
-  isEdit.value = true
-  resetForm()
-  Object.assign(form, row)
-  dialogVisible.value = true
-}
-
-const loadTaskToEditor = (row) => {
-  sql.value = row.sqlContent || ''
-  activeTab.value = 'editor'
-  ElMessage.success('已加载到编辑器')
 }
 
 const handleSave = async () => {
@@ -386,21 +396,14 @@ const handleSave = async () => {
   if (!valid) return
   saving.value = true
   try {
-    const payload = {
-      taskName: form.taskName,
-      sqlContent: form.sqlContent,
-      targetTable: form.targetTable || null,
-      cronExpression: form.cronExpression || null
-    }
-    if (isEdit.value) {
-      await request.put(`/sql-task/${form.id}`, { ...payload, status: form.status })
-      ElMessage.success('更新成功')
-    } else {
-      await request.post('/sql-task', payload)
-      ElMessage.success('保存成功')
-    }
+    await request.post('/sql-task', {
+      taskName: form.value.taskName,
+      sqlContent: form.value.sqlContent,
+      targetTable: form.value.targetTable || null,
+      cronExpression: form.value.cronExpression || null
+    })
+    ElMessage.success('保存成功')
     dialogVisible.value = false
-    fetchTasks()
   } catch (error) {
     ElMessage.error(error.message || '保存失败')
   } finally {
@@ -408,97 +411,170 @@ const handleSave = async () => {
   }
 }
 
-const handleToggle = async (row) => {
+// 从任务管理页面携带 taskId 跳回时加载 SQL
+const loadTaskById = async (taskId) => {
   try {
-    await request.post(`/sql-task/${row.id}/toggle`)
-    ElMessage.success('操作成功')
-    fetchTasks()
-  } catch (error) {
-    ElMessage.error(error.message || '操作失败')
-  }
-}
-
-const handleTaskExecute = async (row) => {
-  executingId.value = row.id
-  try {
-    await request.post(`/sql-task/${row.id}/execute`)
-    ElMessage.success('执行成功')
-    fetchTasks()
-  } catch (error) {
-    ElMessage.error(error.message || '执行失败')
-  } finally {
-    executingId.value = null
-  }
-}
-
-const openLogDialog = (row) => {
-  currentLogTaskId.value = row.id
-  logPage.value = 1
-  logDialogVisible.value = true
-  fetchLogs()
-}
-
-const fetchLogs = async () => {
-  if (!currentLogTaskId.value) return
-  logLoading.value = true
-  try {
-    const res = await request.get(`/sql-task/${currentLogTaskId.value}/logs`, {
-      params: { page: logPage.value, size: logSize.value }
-    })
-    logList.value = res.data.records
-    logTotal.value = res.data.total
-  } catch (error) {
-    ElMessage.error(error.message || '获取日志失败')
-  } finally {
-    logLoading.value = false
-  }
-}
-
-const handleDelete = (row) => {
-  ElMessageBox.confirm(`确定删除任务 "${row.taskName}" 吗？`, '提示', {
-    confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
-  }).then(async () => {
-    try {
-      await request.delete(`/sql-task/${row.id}`)
-      ElMessage.success('删除成功')
-      fetchTasks()
-    } catch (error) {
-      ElMessage.error(error.message || '删除失败')
+    const res = await request.get(`/sql-task/${taskId}`)
+    if (res.code === 200 && res.data) {
+      sql.value = res.data.sqlContent || ''
+      ElMessage.success('已加载任务 SQL')
     }
-  }).catch(() => {})
+  } catch (error) {
+    ElMessage.error(error.message || '加载任务失败')
+  }
 }
 
 onMounted(() => {
-  fetchTasks()
+  loadWritableTables()
+  if (route.query.taskId) {
+    loadTaskById(route.query.taskId)
+  }
 })
 </script>
 
 <style scoped>
 .development-page {
-  padding-bottom: 20px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
 }
 .page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  flex-shrink: 0;
   margin-bottom: 16px;
 }
 .page-header h2 {
   margin: 0;
-  font-size: 20px;
-  font-weight: 600;
 }
-.tab-content {
-  padding: 8px 0;
+.desc {
+  color: #909399;
+  font-size: 14px;
+  margin-top: 4px;
 }
-.tab-toolbar {
+
+.main-layout {
+  flex: 1;
+  min-height: 0;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
+  overflow: hidden;
 }
+
+/* 左侧面板（表列表） */
+.left-panel {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.table-list-area {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.panel-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.panel-card :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
+}
+
+.menu-wrapper {
+  height: 100%;
+  overflow: auto;
+}
+.menu-wrapper :deep(.el-menu-item) {
+  height: 32px;
+  line-height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+}
+.menu-wrapper :deep(.el-menu-item .el-menu-tooltip__trigger) {
+  padding: 0 12px;
+}
+
+/* 水平分割线 */
+.h-divider {
+  height: 6px;
+  flex-shrink: 0;
+  cursor: row-resize;
+  background: transparent;
+  position: relative;
+}
+.h-divider::after {
+  content: '';
+  position: absolute;
+  left: 30%;
+  right: 30%;
+  top: 2px;
+  height: 2px;
+  background: #dcdfe6;
+  border-radius: 1px;
+}
+.h-divider:hover::after {
+  background: #409eff;
+}
+
+.columns-area {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.table-wrapper {
+  height: 100%;
+  overflow: auto;
+}
+.copyable-field {
+  color: #409eff;
+  cursor: pointer;
+  user-select: none;
+}
+.copyable-field:hover {
+  text-decoration: underline;
+}
+
+/* 垂直分割线 */
+.v-divider {
+  width: 6px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  position: relative;
+}
+.v-divider::after {
+  content: '';
+  position: absolute;
+  top: 30%;
+  bottom: 30%;
+  left: 2px;
+  width: 2px;
+  background: #dcdfe6;
+  border-radius: 1px;
+}
+.v-divider:hover::after {
+  background: #409eff;
+}
+
+/* 右侧面板（编辑器+结果） */
+.right-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+}
+
 .editor-card {
-  margin-bottom: 16px;
+  flex-shrink: 0;
 }
 .toolbar {
   display: flex;
@@ -509,7 +585,17 @@ onMounted(() => {
   height: 280px;
 }
 .result-card {
-  margin-top: 16px;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.result-card :deep(.el-card__body) {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 .result-header {
   display: flex;
@@ -521,11 +607,8 @@ onMounted(() => {
   align-items: center;
 }
 .result-table-wrapper {
+  flex: 1;
+  min-height: 0;
   overflow: auto;
-}
-.pagination-wrapper {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
 }
 </style>

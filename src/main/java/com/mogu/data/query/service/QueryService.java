@@ -1,12 +1,11 @@
 package com.mogu.data.query.service;
 
 import com.mogu.data.common.BusinessException;
+import com.mogu.data.query.vo.ExecuteOptions;
 import com.mogu.data.query.vo.QueryResultVO;
 import com.mogu.data.system.service.PermissionService;
 import com.mogu.data.metadata.service.UserTableVisitService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -14,7 +13,11 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * SQL查询服务
+ * SQL 查询服务（即席查询）
+ *
+ * <p>
+ * 负责 SQL 查询的业务逻辑：SELECT 校验、表名解析、读权限校验、访问记录。
+ * 实际执行委托给 {@link ClickHouseQueryService}。
  *
  * @author fengzhu
  */
@@ -22,23 +25,21 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class QueryService {
 
+    private final ClickHouseQueryService clickHouseQueryService;
     private final PermissionService permissionService;
     private final UserTableVisitService userTableVisitService;
 
-    @Qualifier("clickHouseJdbcTemplate")
-    private final JdbcTemplate jdbcTemplate;
-
     /**
-     * 执行SQL查询（仅SELECT，带权限校验、LIMIT限制、超时控制）
+     * 执行 SQL 查询（仅 SELECT，带权限校验、LIMIT 限制、超时控制）
      */
     public QueryResultVO execute(String sql, Long userId) {
         if (sql == null || sql.trim().isEmpty()) {
-            throw new BusinessException("SQL不能为空");
+            throw new BusinessException("SQL 不能为空");
         }
 
         String trimmed = sql.trim();
 
-        // 1. 只允许SELECT
+        // 1. 只允许 SELECT
         if (!isSelectStatement(trimmed)) {
             throw new BusinessException("只允许执行 SELECT 查询语句");
         }
@@ -46,7 +47,7 @@ public class QueryService {
         // 2. 解析涉及的表名
         Set<String> tables = extractTableNames(trimmed);
         if (tables.isEmpty()) {
-            throw new BusinessException("无法解析SQL中涉及的表名");
+            throw new BusinessException("无法解析 SQL 中涉及的表名");
         }
 
         // 3. 权限校验：所有涉及的表都必须有读权限
@@ -64,32 +65,18 @@ public class QueryService {
             }
         }
 
-        // 5. 默认限制100条，并附加ClickHouse执行超时设置（5秒）
-        String executableSql = addLimitIfNeeded(trimmed);
-        if (!executableSql.toUpperCase().contains("SETTINGS")) {
-            executableSql += " SETTINGS max_execution_time = 5";
-        }
+        // 5. 通过统一引擎执行（只读、限制 100 条、超时 5 秒）
+        ExecuteOptions options = ExecuteOptions.builder()
+                .readonly(true)
+                .maxRows(100)
+                .timeoutSeconds(5)
+                .build();
 
-        // 5. 执行查询（通过JdbcTemplate设置Statement超时）
-        long start = System.currentTimeMillis();
-        List<Map<String, Object>> rows = jdbcTemplate.queryForList(executableSql);
-        long executionTime = System.currentTimeMillis() - start;
-
-        // 6. 封装结果
-        QueryResultVO vo = new QueryResultVO();
-        if (!rows.isEmpty()) {
-            vo.setColumns(new ArrayList<>(rows.get(0).keySet()));
-        } else {
-            vo.setColumns(Collections.emptyList());
-        }
-        vo.setRows(rows);
-        vo.setRowCount(rows.size());
-        vo.setExecutionTime(executionTime);
-        return vo;
+        return clickHouseQueryService.execute(trimmed, options);
     }
 
     /**
-     * 校验是否为安全的SELECT语句
+     * 校验是否为安全的 SELECT 语句
      */
     private boolean isSelectStatement(String sql) {
         String cleaned = removeCommentsAndStrings(sql).toUpperCase().trim();
@@ -106,7 +93,7 @@ public class QueryService {
     }
 
     /**
-     * 移除SQL注释和字符串常量，防止关键字出现在字符串中导致误判
+     * 移除 SQL 注释和字符串常量，防止关键字出现在字符串中导致误判
      */
     private String removeCommentsAndStrings(String sql) {
         String s = sql.replaceAll("--[^\\n]*", " ");
@@ -116,7 +103,7 @@ public class QueryService {
     }
 
     /**
-     * 从SQL中提取涉及的表名（database.table格式）
+     * 从 SQL 中提取涉及的表名（database.table 格式）
      */
     private Set<String> extractTableNames(String sql) {
         Set<String> tables = new HashSet<>();
@@ -138,22 +125,6 @@ public class QueryService {
             }
         }
         return tables;
-    }
-
-    /**
-     * 若SQL未包含LIMIT，则自动追加 LIMIT 100
-     */
-    private String addLimitIfNeeded(String sql) {
-        String trimmed = sql.trim().replaceAll(";+$", "");
-        String upper = trimmed.toUpperCase();
-        int lastLimit = upper.lastIndexOf("LIMIT");
-        if (lastLimit > 0) {
-            String after = upper.substring(lastLimit + 5).trim();
-            if (after.matches("^\\d+.*")) {
-                return trimmed;
-            }
-        }
-        return trimmed + " LIMIT 100";
     }
 
 }
