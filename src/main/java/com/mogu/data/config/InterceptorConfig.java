@@ -24,7 +24,8 @@ public class InterceptorConfig implements WebMvcConfigurer {
                 .excludePathPatterns(
                         "/auth/login",
                         "/auth/register",
-                        "/health"
+                        "/health",
+                        "/internal/**"
                 );
     }
 

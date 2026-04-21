@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mogu.data.common.Result;
 import com.mogu.data.integration.entity.SyncTask;
 import com.mogu.data.integration.entity.SyncTaskLog;
+import com.mogu.data.integration.scheduler.TaskSchedulerManager;
 import com.mogu.data.integration.service.SyncEngineService;
 import com.mogu.data.integration.service.SyncTaskLogService;
 import com.mogu.data.integration.service.SyncTaskService;
@@ -30,7 +31,7 @@ public class SyncTaskController {
     private final SyncTaskService syncTaskService;
     private final SyncEngineService syncEngineService;
     private final SyncTaskLogService syncTaskLogService;
-    private final com.mogu.data.integration.scheduler.SyncTaskSchedulerManager schedulerManager;
+    private final TaskSchedulerManager schedulerManager;
 
     @GetMapping("/page")
     public Result<Page<SyncTaskVO>> page(
@@ -80,17 +81,16 @@ public class SyncTaskController {
         SyncTask updated = syncTaskService.getById(id);
         if (updated.getStatus() != null && updated.getStatus() == 1
                 && updated.getCronExpression() != null && !updated.getCronExpression().isEmpty()) {
-            schedulerManager.reschedule(updated.getId(), updated.getCronExpression());
+            schedulerManager.rescheduleSyncTask(updated);
         } else {
-            schedulerManager.cancel(updated.getId());
+            schedulerManager.cancelSyncTask(updated.getId());
         }
         return Result.success();
     }
 
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
-        schedulerManager.cancel(id);
-        syncTaskService.removeById(id);
+        syncTaskService.deleteTask(id);
         return Result.success();
     }
 
@@ -99,9 +99,9 @@ public class SyncTaskController {
         SyncTask task = syncTaskService.toggleStatus(id);
         if (task.getStatus() != null && task.getStatus() == 1
                 && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
-            schedulerManager.schedule(id, task.getCronExpression());
+            schedulerManager.scheduleSyncTask(task);
         } else {
-            schedulerManager.cancel(id);
+            schedulerManager.cancelSyncTask(id);
         }
         return Result.success();
     }

@@ -5,7 +5,7 @@ import com.mogu.data.common.LoginUser;
 import com.mogu.data.common.Result;
 import com.mogu.data.integration.entity.SqlTask;
 import com.mogu.data.integration.entity.SqlTaskLog;
-import com.mogu.data.integration.scheduler.SqlTaskSchedulerManager;
+import com.mogu.data.integration.scheduler.TaskSchedulerManager;
 import com.mogu.data.integration.service.SqlTaskEngineService;
 import com.mogu.data.integration.service.SqlTaskLogService;
 import com.mogu.data.integration.service.SqlTaskService;
@@ -38,7 +38,7 @@ public class SqlTaskController {
     private final SqlTaskService sqlTaskService;
     private final SqlTaskEngineService sqlTaskEngineService;
     private final SqlTaskLogService sqlTaskLogService;
-    private final SqlTaskSchedulerManager schedulerManager;
+    private final TaskSchedulerManager schedulerManager;
     private final PermissionService permissionService;
     private final MetadataTableService metadataTableService;
 
@@ -84,17 +84,16 @@ public class SqlTaskController {
         SqlTask updated = sqlTaskService.getById(id);
         if (updated.getStatus() != null && updated.getStatus() == 1
                 && updated.getCronExpression() != null && !updated.getCronExpression().isEmpty()) {
-            schedulerManager.reschedule(updated.getId(), updated.getCronExpression());
+            schedulerManager.rescheduleSqlTask(updated);
         } else {
-            schedulerManager.cancel(updated.getId());
+            schedulerManager.cancelSqlTask(updated.getId());
         }
         return Result.success();
     }
 
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
-        schedulerManager.cancel(id);
-        sqlTaskService.removeById(id);
+        sqlTaskService.deleteTask(id);
         return Result.success();
     }
 
@@ -103,9 +102,9 @@ public class SqlTaskController {
         SqlTask task = sqlTaskService.toggleStatus(id);
         if (task.getStatus() != null && task.getStatus() == 1
                 && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
-            schedulerManager.schedule(id, task.getCronExpression());
+            schedulerManager.scheduleSqlTask(task);
         } else {
-            schedulerManager.cancel(id);
+            schedulerManager.cancelSqlTask(id);
         }
         return Result.success();
     }

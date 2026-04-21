@@ -22,6 +22,8 @@ public class SqlTaskLog {
 
     private Long taskId;
 
+    private Long dsInstanceId;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime startTime;
 
@@ -31,6 +33,10 @@ public class SqlTaskLog {
     private String status;
 
     private String message;
+
+    private Integer retryCount;
+
+    private String triggerType;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;

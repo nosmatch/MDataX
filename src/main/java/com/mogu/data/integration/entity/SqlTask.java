@@ -32,6 +32,14 @@ public class SqlTask {
 
     private Integer status;
 
+    private Long dsProcessCode;
+
+    private Integer dsScheduleId;
+
+    private Integer retryTimes;
+
+    private Integer retryInterval;
+
     @TableLogic
     @JsonIgnore
     private Integer deleted;

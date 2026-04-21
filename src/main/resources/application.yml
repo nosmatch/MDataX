@@ -17,6 +17,10 @@ server:
   servlet:
     context-path: /api
 
+# 调度模式: local(本地Spring调度) / dolphinscheduler
+scheduler:
+  type: dolphinscheduler
+
 logging:
   level:
     com.mogu.data.mapper: debug

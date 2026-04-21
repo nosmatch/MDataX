@@ -38,6 +38,14 @@ public class SyncTask {
 
     private Integer status;
 
+    private Long dsProcessCode;
+
+    private Integer dsScheduleId;
+
+    private Integer retryTimes;
+
+    private Integer retryInterval;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime lastSyncTime;
 

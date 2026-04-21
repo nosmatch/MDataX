@@ -42,6 +42,23 @@ clickhouse:
       time-between-eviction-runs-millis: 60000
       min-evictable-idle-time-millis: 300000
 
+# DolphinScheduler 配置
+dolphinscheduler:
+  enabled: true
+  base-url: http://localhost:12345/dolphinscheduler
+  token: 2f49e1762a6ca12ebbc9ab0ae06aa69a
+  # 注意：这是项目的 code，不是 id
+  # 可通过 GET /projects?pageNo=1&pageSize=10 查询真实 code
+  project-code: 21417285848320
+  tenant-code: default
+  worker-group: default
+  # 回调密钥，用于 DS Worker 回调 MDataX 时的身份校验
+  callback-secret: mdatax-dev-secret-change-in-production
+  # DS Worker 回调 MDataX 的地址（不含 context-path，因为 buildCallbackScript 会自动加 /api）
+  # 如果 DS 部署在 Docker 中而 MDataX 在宿主机，Mac/Windows 使用 host.docker.internal:8080
+  # Linux 环境请替换为宿主机实际内网 IP
+  callback-url: http://host.docker.internal:8080
+
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
   type-aliases-package: com.mogu.data.entity

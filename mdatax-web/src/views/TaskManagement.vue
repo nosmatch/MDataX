@@ -315,6 +315,10 @@ const fetchLogs = async () => {
 }
 
 const handleDelete = (row) => {
+  if (row.status === 1) {
+    ElMessage.warning('启用状态的任务不能删除，请先停用')
+    return
+  }
   ElMessageBox.confirm(`确定删除任务 "${row.taskName}" 吗？`, '提示', {
     confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
   }).then(async () => {

@@ -1,10 +1,12 @@
 package com.mogu.data.integration.scheduler;
 
+import com.mogu.data.integration.entity.SqlTask;
 import com.mogu.data.integration.entity.SyncTask;
 import com.mogu.data.integration.service.SyncEngineService;
 import com.mogu.data.integration.service.SyncTaskService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.event.ApplicationReadyEvent;
 import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskScheduler;
@@ -17,18 +19,27 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
 /**
- * 同步任务调度管理器
+ * 同步任务调度管理器（本地 Spring 调度实现）
  *
  * @author fengzhu
  */
 @Slf4j
 @Component
-@RequiredArgsConstructor
-public class SyncTaskSchedulerManager {
+@ConditionalOnProperty(name = "scheduler.type", havingValue = "local")
+public class SyncTaskSchedulerManager implements TaskSchedulerManager {
 
     private final ThreadPoolTaskScheduler taskScheduler;
     private final SyncTaskService syncTaskService;
     private final SyncEngineService syncEngineService;
+
+    public SyncTaskSchedulerManager(
+            @Qualifier("syncTaskScheduler") ThreadPoolTaskScheduler taskScheduler,
+            SyncTaskService syncTaskService,
+            SyncEngineService syncEngineService) {
+        this.taskScheduler = taskScheduler;
+        this.syncTaskService = syncTaskService;
+        this.syncEngineService = syncEngineService;
+    }
 
     private final Map<Long, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
 
@@ -122,6 +133,54 @@ public class SyncTaskSchedulerManager {
             }
         }
         return String.join(" ", parts);
+    }
+
+    // ==================== TaskSchedulerManager 接口实现 ====================
+
+    @Override
+    public void scheduleSyncTask(SyncTask task) {
+        if (task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
+            schedule(task.getId(), task.getCronExpression());
+        }
+    }
+
+    @Override
+    public void scheduleSqlTask(SqlTask task) {
+        throw new UnsupportedOperationException("SyncTaskSchedulerManager 不支持 SQL 任务调度");
+    }
+
+    @Override
+    public void cancelSyncTask(Long taskId) {
+        cancel(taskId);
+    }
+
+    @Override
+    public void cancelSqlTask(Long taskId) {
+        throw new UnsupportedOperationException("SyncTaskSchedulerManager 不支持 SQL 任务调度");
+    }
+
+    @Override
+    public void deleteSyncTask(Long taskId) {
+        cancel(taskId);
+    }
+
+    @Override
+    public void deleteSqlTask(Long taskId) {
+        throw new UnsupportedOperationException("SyncTaskSchedulerManager 不支持 SQL 任务调度");
+    }
+
+    @Override
+    public void rescheduleSyncTask(SyncTask task) {
+        if (task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
+            reschedule(task.getId(), task.getCronExpression());
+        } else {
+            cancel(task.getId());
+        }
+    }
+
+    @Override
+    public void rescheduleSqlTask(SqlTask task) {
+        throw new UnsupportedOperationException("SyncTaskSchedulerManager 不支持 SQL 任务调度");
     }
 
 }

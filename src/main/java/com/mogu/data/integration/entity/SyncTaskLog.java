@@ -22,6 +22,8 @@ public class SyncTaskLog {
 
     private Long taskId;
 
+    private Long dsInstanceId;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime startTime;
 
@@ -33,6 +35,10 @@ public class SyncTaskLog {
     private String message;
 
     private Long rowCount;
+
+    private Integer retryCount;
+
+    private String triggerType;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;

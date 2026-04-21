@@ -7,6 +7,7 @@ import com.mogu.data.integration.entity.Datasource;
 import com.mogu.data.integration.entity.SyncTask;
 import com.mogu.data.integration.mapper.DatasourceMapper;
 import com.mogu.data.integration.mapper.SyncTaskMapper;
+import com.mogu.data.integration.scheduler.TaskSchedulerManager;
 import com.mogu.data.integration.vo.SyncTaskVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,6 +32,7 @@ import java.util.List;
 public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
 
     private final DatasourceMapper datasourceMapper;
+    private final TaskSchedulerManager schedulerManager;
 
     public Page<SyncTaskVO> pageTasks(String keyword, long page, long size) {
         Page<SyncTask> taskPage = page(new Page<>(page, size), new LambdaQueryWrapper<SyncTask>()
@@ -76,6 +78,13 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
         }
         task.setStatus(0);
         save(task);
+
+        // 只有启用状态且配置了 Cron，才注册到调度器
+        if (task.getStatus() != null && task.getStatus() == 1
+                && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
+            schedulerManager.scheduleSyncTask(task);
+            updateById(task); // 保存 ds_process_code / ds_schedule_id
+        }
     }
 
     public void updateTask(SyncTask task) {
@@ -88,7 +97,19 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
                 throw new IllegalArgumentException("任务名称已存在");
             }
         }
+
+        // 判断 Cron 是否变化
+        boolean cronChanged = task.getCronExpression() != null
+                && !task.getCronExpression().equals(exist.getCronExpression());
+
         updateById(task);
+
+        // 如果 Cron 变化，重新调度
+        if (cronChanged) {
+            SyncTask updated = getById(task.getId());
+            schedulerManager.rescheduleSyncTask(updated);
+            updateById(updated); // 保存新的 ds_process_code / ds_schedule_id
+        }
     }
 
     public SyncTask toggleStatus(Long taskId) {
@@ -99,7 +120,27 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
         int newStatus = task.getStatus() != null && task.getStatus() == 1 ? 0 : 1;
         task.setStatus(newStatus);
         updateById(task);
+
+        // 同步调度状态
+        if (newStatus == 1 && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
+            schedulerManager.scheduleSyncTask(task);
+            updateById(task); // 保存 ds_process_code / ds_schedule_id
+        } else {
+            schedulerManager.cancelSyncTask(taskId);
+        }
         return task;
+    }
+
+    public void deleteTask(Long taskId) {
+        SyncTask task = getById(taskId);
+        if (task == null || task.getDeleted() != null && task.getDeleted() == 1) {
+            throw new IllegalArgumentException("任务不存在");
+        }
+        if (task.getStatus() != null && task.getStatus() == 1) {
+            throw new IllegalArgumentException("启用状态的任务不能删除，请先停用");
+        }
+        schedulerManager.deleteSyncTask(taskId);
+        removeById(taskId);
     }
 
     public List<String> listTables(Long datasourceId) {
