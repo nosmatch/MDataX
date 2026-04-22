@@ -119,7 +119,7 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
             // ========== Workflow 内任务 ==========
             // 只在传入的 task 有非 null 字段时才更新数据库
             boolean hasUpdate = task.getTaskName() != null || task.getSqlContent() != null
-                    || task.getTargetTable() != null;
+                    || task.getDescription() != null;
             if (hasUpdate) {
                 task.setCronExpression(null);
                 task.setDsProcessCode(null);

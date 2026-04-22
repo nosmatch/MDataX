@@ -25,9 +25,9 @@
 
     <el-table :data="taskList" v-loading="loading" stripe>
       <el-table-column prop="taskName" label="任务名称" min-width="180" />
-      <el-table-column prop="targetTable" label="目标表" min-width="160">
+      <el-table-column prop="description" label="任务描述" min-width="160">
         <template #default="{ row }">
-          {{ row.targetTable || '-' }}
+          {{ row.description || '-' }}
         </template>
       </el-table-column>
       <el-table-column prop="cronExpression" label="Cron表达式" min-width="140">
@@ -137,8 +137,8 @@
         <el-form-item label="任务名称" prop="taskName">
           <el-input v-model="form.taskName" placeholder="请输入任务名称" />
         </el-form-item>
-        <el-form-item label="目标表">
-          <el-input v-model="form.targetTable" placeholder="可选，用于数据写入目标表" />
+        <el-form-item label="任务描述" prop="description">
+          <el-input v-model="form.description" placeholder="请输入任务描述" />
         </el-form-item>
         <el-form-item label="所属工作流">
           <el-select
@@ -180,8 +180,12 @@
             v-model="form.sqlContent"
             type="textarea"
             :rows="8"
+            :disabled="isEdit"
             placeholder="请输入SQL内容"
           />
+          <div v-if="isEdit" style="color: #909399; font-size: 12px; margin-top: 4px">
+            SQL 内容请到 SQL 开发页面编辑
+          </div>
         </el-form-item>
         <el-form-item v-if="isEdit" label="状态">
           <el-radio-group v-model="form.status">
@@ -236,7 +240,7 @@ const form = reactive({
   id: null,
   taskName: '',
   sqlContent: '',
-  targetTable: '',
+  description: '',
   cronExpression: '',
   status: 0,
   workflowId: null,
@@ -249,6 +253,7 @@ const workflowTasks = ref([])
 const rules = {
   taskName: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
   sqlContent: [{ required: true, message: '请输入SQL内容', trigger: 'blur' }],
+  description: [{ required: true, message: '请输入任务描述', trigger: 'blur' }],
   cronExpression: [{
     validator: (rule, value, callback) => {
       if (!value) return callback()
@@ -263,7 +268,7 @@ const resetForm = () => {
   form.id = null
   form.taskName = ''
   form.sqlContent = ''
-  form.targetTable = ''
+  form.description = ''
   form.cronExpression = ''
   form.status = 0
   form.workflowId = null
@@ -354,7 +359,7 @@ const handleSave = async () => {
     const payload = {
       taskName: form.taskName,
       sqlContent: form.sqlContent,
-      targetTable: form.targetTable || null,
+      description: form.description,
       cronExpression: form.workflowId ? null : (form.cronExpression || null),
       workflowId: form.workflowId || null,
       dependTaskIds: form.workflowId ? (form.dependTaskIds || []) : null

@@ -18,9 +18,14 @@
           </el-button>
         </template>
       </el-input>
-      <el-button type="primary" @click="openCreateDialog">
-        <el-icon><Plus /></el-icon> 新建工作流
-      </el-button>
+      <div class="toolbar-actions">
+        <el-button type="primary" @click="openCreateDialog">
+          <el-icon><Plus /></el-icon> 新建工作流
+        </el-button>
+        <el-button type="info" @click="openDsPlatform">
+          <el-icon><Link /></el-icon> 调度系统
+        </el-button>
+      </div>
     </div>
 
     <el-table :data="workflowList" v-loading="loading" stripe>
@@ -63,14 +68,7 @@
           <span class="sub-text">{{ row._nextExecution || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="DS入口" width="90" align="center">
-        <template #default="{ row }">
-          <el-button v-if="row._dsUrl" type="primary" link size="small" @click="openDsUrl(row)">
-            打开
-          </el-button>
-          <span v-else class="sub-text">-</span>
-        </template>
-      </el-table-column>
+      <!-- 操作列 -->
       <el-table-column label="操作" width="340" fixed="right">
         <template #default="{ row }">
           <el-button
@@ -295,7 +293,7 @@
 <script setup>
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search, Loading } from '@element-plus/icons-vue'
+import { Plus, Search, Loading, Link } from '@element-plus/icons-vue'
 import request from '../utils/request.js'
 import CronPicker from '../components/CronPicker.vue'
 import { validateCron } from '../utils/cron.js'
@@ -332,6 +330,8 @@ const currentHistoryWorkflowId = ref(null)
 const logDialogVisible = ref(false)
 const logLoading = ref(false)
 const logList = ref([])
+
+const dsUrl = ref('')
 
 const form = reactive({
   id: null,
@@ -379,19 +379,15 @@ const fetchWorkflows = async () => {
 const loadExtraInfo = async (list) => {
   const promises = list.map(async (row) => {
     try {
-      const [lastRes, nextRes, dsRes] = await Promise.allSettled([
+      const [lastRes, nextRes] = await Promise.allSettled([
         request.get(`/sql-task-workflow/${row.id}/last-execution`),
-        request.get(`/sql-task-workflow/${row.id}/next-execution`),
-        request.get(`/sql-task-workflow/${row.id}/ds-url`).catch(() => null)
+        request.get(`/sql-task-workflow/${row.id}/next-execution`)
       ])
       if (lastRes.status === 'fulfilled' && lastRes.value.data) {
         row._lastExecution = lastRes.value.data
       }
       if (nextRes.status === 'fulfilled' && nextRes.value.data) {
         row._nextExecution = formatTime(nextRes.value.data)
-      }
-      if (dsRes && dsRes.status === 'fulfilled' && dsRes.value.data) {
-        row._dsUrl = dsRes.value.data.dsUrl
       }
     } catch (e) {
       // silent
@@ -462,11 +458,22 @@ const handleExecute = async (row) => {
   }
 }
 
-const openDsUrl = (row) => {
-  if (row._dsUrl) {
-    window.open(row._dsUrl, '_blank')
+const openDsPlatform = () => {
+  if (dsUrl.value) {
+    window.open(dsUrl.value, '_blank')
   } else {
     ElMessage.warning('DS 地址未配置')
+  }
+}
+
+const fetchDsUrl = async () => {
+  try {
+    const res = await request.get('/sql-task-workflow/ds-url')
+    if (res.data) {
+      dsUrl.value = res.data.dsUrl || ''
+    }
+  } catch (e) {
+    // silent
   }
 }
 
@@ -675,6 +682,7 @@ function formatStatus(status) {
 
 onMounted(() => {
   fetchWorkflows()
+  fetchDsUrl()
 })
 </script>
 
@@ -698,6 +706,10 @@ onMounted(() => {
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+}
+.toolbar-actions {
+  display: flex;
+  gap: 8px;
 }
 .pagination-wrapper {
   margin-top: 16px;

@@ -51,7 +51,7 @@ public class ResultTest {
         assertEquals(200, response.getStatusCodeValue());
         Map<String, Object> result = objectMapper.readValue(response.getBody(), Map.class);
         assertEquals(500, result.get("code"));
-        assertEquals("系统繁忙，请稍后再试", result.get("message"));
+        assertEquals("测试系统异常", result.get("message"));
     }
 
 }

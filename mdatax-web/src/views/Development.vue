@@ -85,7 +85,7 @@
               <el-icon><Delete /></el-icon> 清空
             </el-button>
             <el-button type="success" @click="openSaveDialog">
-              <el-icon><DocumentChecked /></el-icon> 保存为任务
+              <el-icon><DocumentChecked /></el-icon> {{ editingTaskId ? '保存修改' : '保存为任务' }}
             </el-button>
           </div>
           <div class="editor-wrapper">
@@ -131,7 +131,7 @@
     <!-- 保存任务对话框 -->
     <el-dialog
       v-model="dialogVisible"
-      title="保存SQL任务"
+      :title="editingTaskId ? '编辑SQL任务' : '保存SQL任务'"
       width="640px"
       :close-on-click-modal="false"
     >
@@ -139,8 +139,8 @@
         <el-form-item label="任务名称" prop="taskName">
           <el-input v-model="form.taskName" placeholder="请输入任务名称" />
         </el-form-item>
-        <el-form-item label="目标表">
-          <el-input v-model="form.targetTable" placeholder="可选，用于数据写入目标表" />
+        <el-form-item label="任务描述" prop="description">
+          <el-input v-model="form.description" placeholder="请输入任务描述" />
         </el-form-item>
         <el-form-item label="所属工作流">
           <el-select
@@ -404,10 +404,11 @@ const saving = ref(false)
 const formRef = ref(null)
 const workflows = ref([])
 const workflowTasks = ref([])
+const editingTaskId = ref(null)
 const form = ref({
   taskName: '',
   sqlContent: '',
-  targetTable: '',
+  description: '',
   cronExpression: '',
   workflowId: null,
   dependTaskIds: []
@@ -415,6 +416,7 @@ const form = ref({
 
 const rules = {
   taskName: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
+  description: [{ required: true, message: '请输入任务描述', trigger: 'blur' }],
   sqlContent: [{ required: true, message: '请输入SQL内容', trigger: 'blur' }],
   cronExpression: [{
     validator: (rule, value, callback) => {
@@ -452,15 +454,25 @@ const onWorkflowChange = async (wfId) => {
 }
 
 const openSaveDialog = () => {
-  form.value = {
-    taskName: '',
-    sqlContent: sql.value,
-    targetTable: '',
-    cronExpression: '',
-    workflowId: null,
-    dependTaskIds: []
+  if (editingTaskId.value) {
+    // 编辑模式：保留已加载的任务信息，SQL 内容取编辑器当前值
+    form.value.sqlContent = sql.value
+    if (form.value.workflowId) {
+      loadWorkflowTasks(form.value.workflowId, editingTaskId.value)
+      loadTaskDependencies(editingTaskId.value)
+    }
+  } else {
+    // 新建模式：重置表单
+    form.value = {
+      taskName: '',
+      sqlContent: sql.value,
+      description: '',
+      cronExpression: '',
+      workflowId: null,
+      dependTaskIds: []
+    }
+    workflowTasks.value = []
   }
-  workflowTasks.value = []
   dialogVisible.value = true
 }
 
@@ -469,15 +481,21 @@ const handleSave = async () => {
   if (!valid) return
   saving.value = true
   try {
-    await request.post('/sql-task', {
+    const payload = {
       taskName: form.value.taskName,
       sqlContent: form.value.sqlContent,
-      targetTable: form.value.targetTable || null,
+      description: form.value.description,
       cronExpression: form.value.workflowId ? null : (form.value.cronExpression || null),
       workflowId: form.value.workflowId || null,
       dependTaskIds: form.value.workflowId ? (form.value.dependTaskIds || []) : null
-    })
-    ElMessage.success('保存成功')
+    }
+    if (editingTaskId.value) {
+      await request.put(`/sql-task/${editingTaskId.value}`, payload)
+      ElMessage.success('更新成功')
+    } else {
+      await request.post('/sql-task', payload)
+      ElMessage.success('保存成功')
+    }
     dialogVisible.value = false
   } catch (error) {
     ElMessage.error(error.message || '保存失败')
@@ -486,16 +504,52 @@ const handleSave = async () => {
   }
 }
 
-// 从任务管理页面携带 taskId 跳回时加载 SQL
+// 从任务管理页面携带 taskId 跳回时加载任务信息
 const loadTaskById = async (taskId) => {
   try {
     const res = await request.get(`/sql-task/${taskId}`)
     if (res.code === 200 && res.data) {
-      sql.value = res.data.sqlContent || ''
-      ElMessage.success('已加载任务 SQL')
+      const data = res.data
+      sql.value = data.sqlContent || ''
+      editingTaskId.value = taskId
+      form.value = {
+        taskName: data.taskName || '',
+        sqlContent: data.sqlContent || '',
+        description: data.description || '',
+        cronExpression: data.cronExpression || '',
+        workflowId: data.workflowId || null,
+        dependTaskIds: []
+      }
+      if (data.workflowId) {
+        await loadWorkflowTasks(data.workflowId, taskId)
+        await loadTaskDependencies(taskId)
+      }
+      ElMessage.success('已加载任务信息')
     }
   } catch (error) {
     ElMessage.error(error.message || '加载任务失败')
+  }
+}
+
+const loadTaskDependencies = async (taskId) => {
+  try {
+    const res = await request.get(`/sql-task/${taskId}/dependencies`)
+    form.value.dependTaskIds = res.data || []
+  } catch (error) {
+    form.value.dependTaskIds = []
+  }
+}
+
+const loadWorkflowTasks = async (wfId, excludeId) => {
+  workflowTasks.value = []
+  if (!wfId) return
+  try {
+    const res = await request.get('/sql-task/page', {
+      params: { page: 1, size: 1000, keyword: '' }
+    })
+    workflowTasks.value = (res.data.records || []).filter(t => t.workflowId === wfId && t.id !== excludeId)
+  } catch (error) {
+    // silent
   }
 }
 

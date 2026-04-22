@@ -66,9 +66,10 @@ public class SqlTaskController {
         SqlTask task = new SqlTask();
         task.setTaskName(request.getTaskName());
         task.setSqlContent(request.getSqlContent());
-        task.setTargetTable(request.getTargetTable());
+        task.setDescription(request.getDescription());
         task.setCronExpression(request.getCronExpression());
         task.setWorkflowId(request.getWorkflowId());
+        task.setCreateUserId(LoginUser.currentUserId());
         sqlTaskService.createTask(task, request.getDependTaskIds());
         return Result.success();
     }
@@ -79,7 +80,7 @@ public class SqlTaskController {
         task.setId(id);
         task.setTaskName(request.getTaskName());
         task.setSqlContent(request.getSqlContent());
-        task.setTargetTable(request.getTargetTable());
+        task.setDescription(request.getDescription());
         task.setCronExpression(request.getCronExpression());
         task.setStatus(request.getStatus());
         sqlTaskService.updateTask(task, request.getDependTaskIds());
@@ -195,7 +196,8 @@ public class SqlTaskController {
         private String taskName;
         @NotBlank(message = "SQL内容不能为空")
         private String sqlContent;
-        private String targetTable;
+        @NotBlank(message = "任务描述不能为空")
+        private String description;
         private String cronExpression;
         private Long workflowId;
         private List<Long> dependTaskIds;
@@ -205,7 +207,7 @@ public class SqlTaskController {
     public static class TaskUpdateRequest {
         private String taskName;
         private String sqlContent;
-        private String targetTable;
+        private String description;
         private String cronExpression;
         private Integer status;
         private Long workflowId;

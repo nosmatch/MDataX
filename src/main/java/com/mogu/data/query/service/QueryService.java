@@ -2,6 +2,7 @@ package com.mogu.data.query.service;
 
 import com.mogu.data.common.BusinessException;
 import com.mogu.data.common.LoginUser;
+import com.mogu.data.metadata.service.MetadataTableAutoSyncService;
 import com.mogu.data.query.vo.ExecuteOptions;
 import com.mogu.data.query.vo.QueryResultVO;
 import com.mogu.data.system.service.PermissionService;
@@ -31,6 +32,7 @@ public class QueryService {
     private final PermissionService permissionService;
     private final UserTableVisitService userTableVisitService;
     private final TableAccessHistoryService tableAccessHistoryService;
+    private final MetadataTableAutoSyncService autoSyncService;
 
     /**
      * 执行 SQL 查询（仅 SELECT，带权限校验、LIMIT 限制、超时控制）
@@ -93,21 +95,22 @@ public class QueryService {
         String trimmed = sql.trim();
         boolean isSelect = isSelectStatement(trimmed);
 
-        // 解析 SQL 中涉及的所有表名
-        Set<String> tables = extractAllTableNames(trimmed);
+        // 解析 SQL 中涉及的读表和写表
+        Set<String> readTables = extractReadTableNames(trimmed);
+        Set<String> writeTables = extractWriteTableNames(trimmed);
 
         if (isSelect) {
             // 纯 SELECT：读权限校验 + 访问记录
-            if (tables.isEmpty()) {
+            if (readTables.isEmpty()) {
                 throw new BusinessException("无法解析 SQL 中涉及的表名");
             }
-            for (String table : tables) {
+            for (String table : readTables) {
                 if (!permissionService.hasReadPermission(userId, table)) {
                     throw new BusinessException("无权限查询表: " + table);
                 }
             }
             String username = LoginUser.currentUsername();
-            for (String table : tables) {
+            for (String table : readTables) {
                 int dot = table.indexOf('.');
                 if (dot > 0) {
                     String dbName = table.substring(0, dot);
@@ -117,8 +120,13 @@ public class QueryService {
                 }
             }
         } else {
-            // DDL / DML：写权限校验（对能解析到的表）
-            for (String table : tables) {
+            // DDL / DML：读权限校验（来源表）+ 写权限校验（目标表）
+            for (String table : readTables) {
+                if (!permissionService.hasReadPermission(userId, table)) {
+                    throw new BusinessException("无权限读取表: " + table);
+                }
+            }
+            for (String table : writeTables) {
                 if (!permissionService.hasWritePermission(userId, table)) {
                     throw new BusinessException("无权限操作表: " + table);
                 }
@@ -131,7 +139,25 @@ public class QueryService {
                 .timeoutSeconds(5)
                 .build();
 
-        return clickHouseQueryService.execute(trimmed, options);
+        QueryResultVO result = clickHouseQueryService.execute(trimmed, options);
+
+        // DDL / DML 执行成功后：
+        // 1. 只同步写表的元数据并设置责任人（来源表不受影响）
+        // 2. 只记录写表的访问历史
+        if (!isSelect) {
+            String username = LoginUser.currentUsername();
+            for (String table : writeTables) {
+                int dot = table.indexOf('.');
+                if (dot > 0) {
+                    String dbName = table.substring(0, dot);
+                    String tblName = table.substring(dot + 1);
+                    autoSyncService.syncTableOwner(dbName, tblName, userId);
+                    tableAccessHistoryService.recordWrite(userId, username, dbName, tblName, null);
+                }
+            }
+        }
+
+        return result;
     }
 
     /**
@@ -187,13 +213,22 @@ public class QueryService {
     }
 
     /**
-     * 从 SQL 中提取所有涉及的表名（读 + 写操作）
+     * 从 SQL 中提取读操作涉及的表名（FROM / JOIN）
      */
-    private Set<String> extractAllTableNames(String sql) {
+    private Set<String> extractReadTableNames(String sql) {
+        Set<String> tables = new HashSet<>();
+        String cleaned = removeCommentsAndStrings(sql);
+        collectTableNames(cleaned, "\\b(?:FROM|JOIN)\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
+        return tables;
+    }
+
+    /**
+     * 从 SQL 中提取写操作涉及的表名（INSERT / UPDATE / DELETE / CREATE / DROP / ALTER / TRUNCATE）
+     */
+    private Set<String> extractWriteTableNames(String sql) {
         Set<String> tables = new HashSet<>();
         String cleaned = removeCommentsAndStrings(sql);
 
-        collectTableNames(cleaned, "\\b(?:FROM|JOIN)\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
         collectTableNames(cleaned, "\\bINSERT\\s+INTO\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
         collectTableNames(cleaned, "\\bUPDATE\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
         collectTableNames(cleaned, "\\bDELETE\\s+FROM\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);

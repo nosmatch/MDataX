@@ -144,12 +144,8 @@ public class SqlTaskWorkflowController {
                 .list());
     }
 
-    @GetMapping("/{id}/ds-url")
-    public Result<Map<String, String>> dsUrl(@PathVariable Long id) {
-        SqlTaskWorkflow workflow = workflowService.getById(id);
-        if (workflow == null) {
-            return Result.error("工作流不存在");
-        }
+    @GetMapping("/ds-url")
+    public Result<Map<String, String>> dsUrl() {
         String baseUrl = props.getBaseUrl();
         if (baseUrl == null || baseUrl.isEmpty()) {
             return Result.error("DolphinScheduler 地址未配置");

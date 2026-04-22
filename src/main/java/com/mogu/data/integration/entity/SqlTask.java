@@ -26,11 +26,13 @@ public class SqlTask {
 
     private String sqlContent;
 
-    private String targetTable;
+    private String description;
 
     private String cronExpression;
 
     private Integer status;
+
+    private Long createUserId;
 
     private Long workflowId;
 
