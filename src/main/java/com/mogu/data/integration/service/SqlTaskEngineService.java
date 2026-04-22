@@ -34,12 +34,16 @@ public class SqlTaskEngineService {
      * 执行 SQL 任务
      */
     public void execute(Long taskId) {
+        execute(taskId, null);
+    }
+
+    public void execute(Long taskId, Long dsInstanceId) {
         SqlTask task = sqlTaskMapper.selectById(taskId);
         if (task == null || task.getDeleted() != null && task.getDeleted() == 1) {
             throw new IllegalArgumentException("任务不存在");
         }
 
-        SqlTaskLog taskLog = sqlTaskLogService.startLog(taskId);
+        SqlTaskLog taskLog = sqlTaskLogService.startLog(taskId, dsInstanceId);
         try {
             String sql = task.getSqlContent();
             if (sql == null || sql.trim().isEmpty()) {

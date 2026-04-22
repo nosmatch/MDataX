@@ -1,6 +1,7 @@
 package com.mogu.data.integration.scheduler;
 
 import com.mogu.data.integration.entity.SqlTask;
+import com.mogu.data.integration.util.CronUtils;
 import com.mogu.data.integration.entity.SyncTask;
 import com.mogu.data.integration.service.SqlTaskEngineService;
 import com.mogu.data.integration.service.SqlTaskService;
@@ -66,7 +67,7 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
      */
     public void schedule(Long taskId, String cronExpression) {
         cancel(taskId);
-        String springCron = SyncTaskSchedulerManager.convertQuartzToSpringCron(cronExpression);
+        String springCron = CronUtils.convertQuartzToSpringCron(cronExpression);
         try {
             CronTrigger trigger = new CronTrigger(springCron);
             ScheduledFuture<?> future = taskScheduler.schedule(() -> executeTask(taskId), trigger);
@@ -156,6 +157,26 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
         } else {
             cancel(task.getId());
         }
+    }
+
+    @Override
+    public void scheduleWorkflow(com.mogu.data.integration.entity.SqlTaskWorkflow workflow) {
+        throw new UnsupportedOperationException("本地调度器不支持 Workflow");
+    }
+
+    @Override
+    public void cancelWorkflow(Long workflowId) {
+        throw new UnsupportedOperationException("本地调度器不支持 Workflow");
+    }
+
+    @Override
+    public void deleteWorkflow(Long workflowId) {
+        throw new UnsupportedOperationException("本地调度器不支持 Workflow");
+    }
+
+    @Override
+    public void rescheduleWorkflow(com.mogu.data.integration.entity.SqlTaskWorkflow workflow) {
+        throw new UnsupportedOperationException("本地调度器不支持 Workflow");
     }
 
 }

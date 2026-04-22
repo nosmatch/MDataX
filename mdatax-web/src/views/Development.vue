@@ -142,8 +142,39 @@
         <el-form-item label="目标表">
           <el-input v-model="form.targetTable" placeholder="可选，用于数据写入目标表" />
         </el-form-item>
-        <el-form-item label="Cron表达式">
-          <el-input v-model="form.cronExpression" placeholder="例如: 0 0 2 * * ?" />
+        <el-form-item label="所属工作流">
+          <el-select
+            v-model="form.workflowId"
+            placeholder="请选择工作流（不选则为独立任务）"
+            clearable
+            style="width: 100%"
+            @change="onWorkflowChange"
+          >
+            <el-option
+              v-for="wf in workflows"
+              :key="wf.id"
+              :label="wf.workflowName"
+              :value="wf.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.workflowId" label="上游依赖">
+          <el-select
+            v-model="form.dependTaskIds"
+            multiple
+            placeholder="选择上游依赖任务"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="t in workflowTasks"
+              :key="t.id"
+              :label="t.taskName"
+              :value="t.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-else label="Cron表达式" prop="cronExpression">
+          <CronPicker v-model="form.cronExpression" />
         </el-form-item>
         <el-form-item label="SQL内容" prop="sqlContent">
           <el-input
@@ -172,6 +203,8 @@ import { VideoPlay, Delete, MagicStick, DocumentChecked } from '@element-plus/ic
 import { format } from 'sql-formatter'
 import MonacoEditor from '../components/MonacoEditor.vue'
 import request from '../utils/request.js'
+import CronPicker from '../components/CronPicker.vue'
+import { validateCron } from '../utils/cron.js'
 
 const route = useRoute()
 
@@ -321,7 +354,7 @@ const executeSql = async () => {
   executing.value = true
   resultLoaded.value = true
   try {
-    const res = await request.post('/query/execute', { sql: trimmed })
+    const res = await request.post('/query/execute', { sql: trimmed, readonly: false })
     if (res.code === 200) {
       result.value = res.data
       ElMessage.success('执行成功')
@@ -369,16 +402,53 @@ const copyToClipboard = async (text) => {
 const dialogVisible = ref(false)
 const saving = ref(false)
 const formRef = ref(null)
+const workflows = ref([])
+const workflowTasks = ref([])
 const form = ref({
   taskName: '',
   sqlContent: '',
   targetTable: '',
-  cronExpression: ''
+  cronExpression: '',
+  workflowId: null,
+  dependTaskIds: []
 })
 
 const rules = {
   taskName: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
-  sqlContent: [{ required: true, message: '请输入SQL内容', trigger: 'blur' }]
+  sqlContent: [{ required: true, message: '请输入SQL内容', trigger: 'blur' }],
+  cronExpression: [{
+    validator: (rule, value, callback) => {
+      if (!value) return callback()
+      const { valid, message } = validateCron(value)
+      if (!valid) callback(new Error(message))
+      else callback()
+    }, trigger: 'change'
+  }]
+}
+
+const loadWorkflows = async () => {
+  try {
+    const res = await request.get('/sql-task-workflow/page', {
+      params: { page: 1, size: 1000 }
+    })
+    workflows.value = res.data.records || []
+  } catch (error) {
+    // silent
+  }
+}
+
+const onWorkflowChange = async (wfId) => {
+  form.value.dependTaskIds = []
+  workflowTasks.value = []
+  if (!wfId) return
+  try {
+    const res = await request.get('/sql-task/page', {
+      params: { page: 1, size: 1000, keyword: '' }
+    })
+    workflowTasks.value = (res.data.records || []).filter(t => t.workflowId === wfId)
+  } catch (error) {
+    // silent
+  }
 }
 
 const openSaveDialog = () => {
@@ -386,8 +456,11 @@ const openSaveDialog = () => {
     taskName: '',
     sqlContent: sql.value,
     targetTable: '',
-    cronExpression: ''
+    cronExpression: '',
+    workflowId: null,
+    dependTaskIds: []
   }
+  workflowTasks.value = []
   dialogVisible.value = true
 }
 
@@ -400,7 +473,9 @@ const handleSave = async () => {
       taskName: form.value.taskName,
       sqlContent: form.value.sqlContent,
       targetTable: form.value.targetTable || null,
-      cronExpression: form.value.cronExpression || null
+      cronExpression: form.value.workflowId ? null : (form.value.cronExpression || null),
+      workflowId: form.value.workflowId || null,
+      dependTaskIds: form.value.workflowId ? (form.value.dependTaskIds || []) : null
     })
     ElMessage.success('保存成功')
     dialogVisible.value = false
@@ -426,6 +501,7 @@ const loadTaskById = async (taskId) => {
 
 onMounted(() => {
   loadWritableTables()
+  loadWorkflows()
   if (route.query.taskId) {
     loadTaskById(route.query.taskId)
   }

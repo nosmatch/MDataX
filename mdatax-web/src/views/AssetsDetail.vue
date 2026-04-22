@@ -30,7 +30,8 @@
           <el-descriptions-item label="表注释">{{ tableInfo.tableComment || '-' }}</el-descriptions-item>
           <el-descriptions-item label="责任人">{{ tableInfo.ownerName || '-' }}</el-descriptions-item>
           <el-descriptions-item label="创建时间">{{ tableInfo.createTime || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="更新时间">{{ tableInfo.updateTime || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="元数据更新时间">{{ tableInfo.updateTime || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="数据最近更新时间">{{ tableInfo.lastDataUpdateTime || '-' }}</el-descriptions-item>
         </el-descriptions>
       </el-tab-pane>
 
@@ -51,21 +52,32 @@
         </div>
       </el-tab-pane>
 
-      <!-- Tab4: 权限信息 -->
-      <el-tab-pane label="权限信息" name="permission">
-        <div v-loading="loadingPermission">
-          <el-descriptions :column="1" border>
-            <el-descriptions-item label="读权限">
-              <el-tag :type="permission.read ? 'success' : 'danger'">
-                {{ permission.read ? '有权限' : '无权限' }}
-              </el-tag>
-            </el-descriptions-item>
-            <el-descriptions-item label="写权限">
-              <el-tag :type="permission.write ? 'success' : 'danger'">
-                {{ permission.write ? '有权限' : '无权限' }}
-              </el-tag>
-            </el-descriptions-item>
-          </el-descriptions>
+      <!-- Tab4: 访问历史 -->
+      <el-tab-pane label="访问历史" name="history">
+        <div v-loading="loadingHistory">
+          <el-table :data="accessHistory" stripe v-if="accessHistory.length > 0">
+            <el-table-column prop="username" label="操作人" min-width="120" />
+            <el-table-column prop="accessType" label="操作类型" width="100" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.accessType === 'READ' ? 'success' : 'warning'" size="small">
+                  {{ row.accessType === 'READ' ? '读' : '写' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="accessTime" label="访问时间" min-width="160" />
+          </el-table>
+          <el-empty v-else description="暂无访问记录" />
+          <div class="pagination-wrapper" v-if="historyTotal > 0">
+            <el-pagination
+              v-model:current-page="historyPage"
+              v-model:page-size="historySize"
+              :total="historyTotal"
+              :page-sizes="[10, 20, 50]"
+              layout="total, sizes, prev, pager, next"
+              @size-change="handleHistorySizeChange"
+              @current-change="handleHistoryPageChange"
+            />
+          </div>
         </div>
       </el-tab-pane>
     </el-tabs>
@@ -84,14 +96,18 @@ const tableId = route.params.id
 
 const activeTab = ref('columns')
 const loadingColumns = ref(false)
-const loadingPermission = ref(false)
+const loadingHistory = ref(false)
 const loadingPreview = ref(false)
 
 const tableInfo = ref({})
 const columns = ref([])
-const permission = ref({ read: false, write: false })
+const accessHistory = ref([])
 const previewColumns = ref([])
 const previewRows = ref([])
+
+const historyPage = ref(1)
+const historySize = ref(10)
+const historyTotal = ref(0)
 
 const fetchTableInfo = async () => {
   try {
@@ -114,16 +130,33 @@ const fetchColumns = async () => {
   }
 }
 
-const fetchPermission = async () => {
-  loadingPermission.value = true
+const fetchAccessHistory = async () => {
+  loadingHistory.value = true
   try {
-    const res = await request.get(`/metadata/tables/${tableId}/permission`)
-    permission.value = res.data
+    const res = await request.get(`/metadata/tables/${tableId}/access-history`, {
+      params: {
+        page: historyPage.value,
+        size: historySize.value
+      }
+    })
+    accessHistory.value = res.data.records || []
+    historyTotal.value = res.data.total || 0
   } catch (error) {
-    ElMessage.error(error.message || '获取权限信息失败')
+    ElMessage.error(error.message || '获取访问历史失败')
   } finally {
-    loadingPermission.value = false
+    loadingHistory.value = false
   }
+}
+
+const handleHistoryPageChange = (val) => {
+  historyPage.value = val
+  fetchAccessHistory()
+}
+
+const handleHistorySizeChange = (val) => {
+  historySize.value = val
+  historyPage.value = 1
+  fetchAccessHistory()
 }
 
 const fetchPreview = async () => {
@@ -160,7 +193,7 @@ onMounted(() => {
   fetchTableInfo()
   fetchColumns()
   fetchPreview()
-  fetchPermission()
+  fetchAccessHistory()
 })
 </script>
 
@@ -177,5 +210,10 @@ onMounted(() => {
 .table-title h3 {
   margin: 0;
   font-size: 18px;
+}
+.pagination-wrapper {
+  margin-top: 16px;
+  display: flex;
+  justify-content: flex-end;
 }
 </style>

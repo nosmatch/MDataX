@@ -1,6 +1,7 @@
 package com.mogu.data.integration.scheduler;
 
 import com.mogu.data.integration.entity.SqlTask;
+import com.mogu.data.integration.entity.SqlTaskWorkflow;
 import com.mogu.data.integration.entity.SyncTask;
 
 /**
@@ -16,6 +17,8 @@ import com.mogu.data.integration.entity.SyncTask;
  * @author fengzhu
  */
 public interface TaskSchedulerManager {
+
+    // ==================== 独立任务调度 ====================
 
     /**
      * 注册同步任务的定时调度。
@@ -72,4 +75,34 @@ public interface TaskSchedulerManager {
      * @param task SQL 任务
      */
     void rescheduleSqlTask(SqlTask task);
+
+    // ==================== Workflow（DAG）调度 ====================
+
+    /**
+     * 注册 SQL 任务工作流的定时调度。
+     *
+     * @param workflow SQL 任务工作流
+     */
+    void scheduleWorkflow(SqlTaskWorkflow workflow);
+
+    /**
+     * 取消 SQL 任务工作流的定时调度。
+     *
+     * @param workflowId 工作流ID
+     */
+    void cancelWorkflow(Long workflowId);
+
+    /**
+     * 删除 SQL 任务工作流在调度器中的资源。
+     *
+     * @param workflowId 工作流ID
+     */
+    void deleteWorkflow(Long workflowId);
+
+    /**
+     * 重新调度 SQL 任务工作流（先取消再注册）。
+     *
+     * @param workflow SQL 任务工作流
+     */
+    void rescheduleWorkflow(SqlTaskWorkflow workflow);
 }

@@ -35,6 +35,11 @@
           {{ row.cronExpression || '-' }}
         </template>
       </el-table-column>
+      <el-table-column prop="workflowName" label="所属工作流" min-width="140">
+        <template #default="{ row }">
+          {{ getWorkflowName(row.workflowId) || '-' }}
+        </template>
+      </el-table-column>
       <el-table-column prop="status" label="状态" width="90" align="center">
         <template #default="{ row }">
           <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
@@ -45,7 +50,14 @@
       <el-table-column prop="createTime" label="创建时间" min-width="160" />
       <el-table-column label="操作" width="340" fixed="right">
         <template #default="{ row }">
-          <el-button type="success" link size="small" :loading="executingId === row.id" @click="handleTaskExecute(row)">
+          <el-button
+            type="success"
+            link
+            size="small"
+            :disabled="row.status !== 1"
+            :loading="executingId === row.id"
+            @click="handleTaskExecute(row)"
+          >
             执行
           </el-button>
           <el-button type="info" link size="small" @click="openLogDialog(row)">
@@ -128,8 +140,40 @@
         <el-form-item label="目标表">
           <el-input v-model="form.targetTable" placeholder="可选，用于数据写入目标表" />
         </el-form-item>
-        <el-form-item label="Cron表达式">
-          <el-input v-model="form.cronExpression" placeholder="例如: 0 0 2 * * ?" />
+        <el-form-item label="所属工作流">
+          <el-select
+            v-model="form.workflowId"
+            placeholder="请选择工作流"
+            clearable
+            :disabled="isEdit"
+            style="width: 100%"
+            @change="(val) => { form.dependTaskIds = []; loadWorkflowTasks(val, form.id) }"
+          >
+            <el-option
+              v-for="wf in workflows"
+              :key="wf.id"
+              :label="wf.workflowName"
+              :value="wf.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.workflowId" label="上游依赖">
+          <el-select
+            v-model="form.dependTaskIds"
+            multiple
+            placeholder="选择上游依赖任务"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="t in workflowTasks"
+              :key="t.id"
+              :label="t.taskName"
+              :value="t.id"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-else label="Cron表达式" prop="cronExpression">
+          <CronPicker v-model="form.cronExpression" />
         </el-form-item>
         <el-form-item label="SQL内容" prop="sqlContent">
           <el-input
@@ -162,6 +206,8 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import request from '../utils/request.js'
+import CronPicker from '../components/CronPicker.vue'
+import { validateCron } from '../utils/cron.js'
 
 const router = useRouter()
 
@@ -192,12 +238,25 @@ const form = reactive({
   sqlContent: '',
   targetTable: '',
   cronExpression: '',
-  status: 0
+  status: 0,
+  workflowId: null,
+  dependTaskIds: []
 })
+
+const workflows = ref([])
+const workflowTasks = ref([])
 
 const rules = {
   taskName: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
-  sqlContent: [{ required: true, message: '请输入SQL内容', trigger: 'blur' }]
+  sqlContent: [{ required: true, message: '请输入SQL内容', trigger: 'blur' }],
+  cronExpression: [{
+    validator: (rule, value, callback) => {
+      if (!value) return callback()
+      const { valid, message } = validateCron(value)
+      if (!valid) callback(new Error(message))
+      else callback()
+    }, trigger: 'change'
+  }]
 }
 
 const resetForm = () => {
@@ -207,6 +266,9 @@ const resetForm = () => {
   form.targetTable = ''
   form.cronExpression = ''
   form.status = 0
+  form.workflowId = null
+  form.dependTaskIds = []
+  workflowTasks.value = []
 }
 
 const fetchTasks = async () => {
@@ -224,16 +286,59 @@ const fetchTasks = async () => {
   }
 }
 
+const loadWorkflows = async () => {
+  try {
+    const res = await request.get('/sql-task-workflow/page', {
+      params: { page: 1, size: 1000 }
+    })
+    workflows.value = res.data.records || []
+  } catch (error) {
+    // silent
+  }
+}
+
+const getWorkflowName = (wfId) => {
+  if (!wfId) return ''
+  const wf = workflows.value.find(w => w.id === wfId)
+  return wf ? wf.workflowName : ''
+}
+
+const loadWorkflowTasks = async (wfId, excludeId) => {
+  workflowTasks.value = []
+  if (!wfId) return
+  try {
+    const res = await request.get('/sql-task/page', {
+      params: { page: 1, size: 1000, keyword: '' }
+    })
+    workflowTasks.value = (res.data.records || []).filter(t => t.workflowId === wfId && t.id !== excludeId)
+  } catch (error) {
+    // silent
+  }
+}
+
+const loadTaskDependencies = async (taskId) => {
+  try {
+    const res = await request.get(`/sql-task/${taskId}/dependencies`)
+    form.dependTaskIds = res.data || []
+  } catch (error) {
+    form.dependTaskIds = []
+  }
+}
+
 const openCreateDialog = () => {
   isEdit.value = false
   resetForm()
   dialogVisible.value = true
 }
 
-const handleEdit = (row) => {
+const handleEdit = async (row) => {
   isEdit.value = true
   resetForm()
   Object.assign(form, row)
+  if (row.workflowId) {
+    await loadWorkflowTasks(row.workflowId, row.id)
+    await loadTaskDependencies(row.id)
+  }
   dialogVisible.value = true
 }
 
@@ -250,7 +355,9 @@ const handleSave = async () => {
       taskName: form.taskName,
       sqlContent: form.sqlContent,
       targetTable: form.targetTable || null,
-      cronExpression: form.cronExpression || null
+      cronExpression: form.workflowId ? null : (form.cronExpression || null),
+      workflowId: form.workflowId || null,
+      dependTaskIds: form.workflowId ? (form.dependTaskIds || []) : null
     }
     if (isEdit.value) {
       await request.put(`/sql-task/${form.id}`, { ...payload, status: form.status })
@@ -334,6 +441,7 @@ const handleDelete = (row) => {
 
 onMounted(() => {
   fetchTasks()
+  loadWorkflows()
 })
 </script>
 

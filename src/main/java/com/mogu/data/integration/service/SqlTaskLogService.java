@@ -30,9 +30,10 @@ public class SqlTaskLogService extends ServiceImpl<SqlTaskLogMapper, SqlTaskLog>
         return page(new Page<>(page, size), wrapper);
     }
 
-    public SqlTaskLog startLog(Long taskId) {
+    public SqlTaskLog startLog(Long taskId, Long dsInstanceId) {
         SqlTaskLog log = new SqlTaskLog();
         log.setTaskId(taskId);
+        log.setDsInstanceId(dsInstanceId);
         log.setStartTime(LocalDateTime.now());
         log.setStatus("RUNNING");
         save(log);

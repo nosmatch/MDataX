@@ -96,8 +96,8 @@ public class ClickHouseQueryService {
             result = addLimitIfNeeded(result, options.getMaxRows());
         }
 
-        // 追加超时设置
-        if (options.getTimeoutSeconds() > 0
+        // SELECT 追加超时设置（DDL/DML 追加 SETTINGS 可能导致语法错误）
+        if (isSelect && options.getTimeoutSeconds() > 0
                 && !result.toUpperCase().contains("SETTINGS")) {
             result += " SETTINGS max_execution_time = " + options.getTimeoutSeconds();
         }

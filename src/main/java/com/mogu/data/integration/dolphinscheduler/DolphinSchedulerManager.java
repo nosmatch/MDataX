@@ -1,14 +1,24 @@
 package com.mogu.data.integration.dolphinscheduler;
 
 import com.mogu.data.integration.entity.SqlTask;
+import com.mogu.data.integration.entity.SqlTaskDependency;
+import com.mogu.data.integration.entity.SqlTaskWorkflow;
 import com.mogu.data.integration.entity.SyncTask;
+import com.mogu.data.integration.mapper.SqlTaskDependencyMapper;
 import com.mogu.data.integration.mapper.SqlTaskMapper;
+import com.mogu.data.integration.mapper.SqlTaskWorkflowMapper;
 import com.mogu.data.integration.mapper.SyncTaskMapper;
 import com.mogu.data.integration.scheduler.TaskSchedulerManager;
+import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 /**
  * DolphinScheduler 调度管理器实现。
@@ -30,6 +40,8 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
     private final DolphinSchedulerProperties props;
     private final SqlTaskMapper sqlTaskMapper;
     private final SyncTaskMapper syncTaskMapper;
+    private final SqlTaskDependencyMapper sqlTaskDependencyMapper;
+    private final SqlTaskWorkflowMapper sqlTaskWorkflowMapper;
 
     @Override
     public void scheduleSyncTask(SyncTask task) {
@@ -90,6 +102,158 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
         cancelByTask(task.getDsProcessCode(), task.getDsScheduleId());
         scheduleSqlTask(task);
     }
+
+    @Override
+    public void scheduleWorkflow(SqlTaskWorkflow workflow) {
+        if (!props.isEnabled()) {
+            log.warn("DolphinScheduler 未启用，跳过 Workflow 调度注册: workflowId={}", workflow.getId());
+            return;
+        }
+        try {
+            DagData dagData = buildDagData(workflow.getId());
+            String processName = "WORKFLOW-" + workflow.getWorkflowName();
+            Long processCode = dsClient.createOrUpdateDagProcess(
+                    workflow.getDsProcessCode(), processName,
+                    dagData.getNodes(), dagData.getRelations());
+            workflow.setDsProcessCode(processCode);
+            log.info("DS Workflow 工作流创建/更新成功: workflowId={}, processCode={}",
+                    workflow.getId(), processCode);
+
+            // 上线工作流
+            dsClient.releaseProcess(processCode, "ONLINE");
+
+            // 处理定时调度
+            String cron = workflow.getCronExpression();
+            if (cron != null && !cron.isEmpty()) {
+                Integer scheduleId;
+                if (workflow.getDsScheduleId() == null) {
+                    scheduleId = dsClient.createSchedule(processCode, cron);
+                    workflow.setDsScheduleId(scheduleId);
+                    log.info("DS Workflow 定时调度创建成功: workflowId={}, scheduleId={}",
+                            workflow.getId(), scheduleId);
+                } else {
+                    dsClient.updateSchedule(processCode, workflow.getDsScheduleId(), cron);
+                    scheduleId = workflow.getDsScheduleId();
+                    log.info("DS Workflow 定时调度更新成功: workflowId={}, scheduleId={}",
+                            workflow.getId(), scheduleId);
+                }
+                dsClient.onlineSchedule(processCode, scheduleId);
+            }
+        } catch (Exception e) {
+            log.error("DS Workflow 调度注册失败: workflowId={}", workflow.getId(), e);
+        }
+    }
+
+    @Override
+    public void cancelWorkflow(Long workflowId) {
+        SqlTaskWorkflow workflow = sqlTaskWorkflowMapper.selectById(workflowId);
+        if (workflow != null && workflow.getDsProcessCode() != null) {
+            cancelWorkflowInternal(workflow);
+        }
+    }
+
+    @Override
+    public void deleteWorkflow(Long workflowId) {
+        SqlTaskWorkflow workflow = sqlTaskWorkflowMapper.selectById(workflowId);
+        if (workflow != null && workflow.getDsProcessCode() != null) {
+            deleteWorkflowInternal(workflow);
+        }
+    }
+
+    @Override
+    public void rescheduleWorkflow(SqlTaskWorkflow workflow) {
+        cancelWorkflowInternal(workflow);
+        scheduleWorkflow(workflow);
+    }
+
+    // ==================== Workflow 内部方法 ====================
+
+    private void cancelWorkflowInternal(SqlTaskWorkflow workflow) {
+        if (workflow.getDsProcessCode() == null) {
+            return;
+        }
+        try {
+            if (workflow.getDsScheduleId() != null) {
+                dsClient.offlineSchedule(workflow.getDsProcessCode(), workflow.getDsScheduleId());
+            }
+            dsClient.releaseProcess(workflow.getDsProcessCode(), "OFFLINE");
+            log.info("DS Workflow 调度已取消: workflowId={}", workflow.getId());
+        } catch (Exception e) {
+            log.error("DS Workflow 调度取消失败: workflowId={}", workflow.getId(), e);
+        }
+    }
+
+    private void deleteWorkflowInternal(SqlTaskWorkflow workflow) {
+        if (workflow.getDsProcessCode() == null) {
+            return;
+        }
+        try {
+            if (workflow.getDsScheduleId() != null) {
+                dsClient.offlineSchedule(workflow.getDsProcessCode(), workflow.getDsScheduleId());
+            }
+            dsClient.releaseProcess(workflow.getDsProcessCode(), "OFFLINE");
+            dsClient.deleteProcess(workflow.getDsProcessCode());
+            log.info("DS Workflow 已删除: workflowId={}", workflow.getId());
+        } catch (Exception e) {
+            log.error("DS Workflow 删除失败: workflowId={}", workflow.getId(), e);
+        }
+    }
+
+    private DagData buildDagData(Long workflowId) {
+        List<SqlTask> tasks = sqlTaskMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SqlTask>()
+                        .eq(SqlTask::getWorkflowId, workflowId)
+                        .eq(SqlTask::getDeleted, 0));
+
+        List<SqlTaskDependency> deps = sqlTaskDependencyMapper.selectByWorkflowId(workflowId);
+
+        Map<Long, Long> taskIdToCode = new HashMap<>();
+        List<DagNode> nodes = new ArrayList<>();
+
+        for (SqlTask task : tasks) {
+            // 确保每个任务有稳定的 DS taskCode
+            if (task.getDsTaskCode() == null) {
+                task.setDsTaskCode(dsClient.generateTaskCode());
+                sqlTaskMapper.updateById(task);
+            }
+            long taskCode = task.getDsTaskCode();
+            taskIdToCode.put(task.getId(), taskCode);
+
+            String script = dsClient.getClass().getDeclaredMethods().length > 0
+                    ? buildCallbackScript("SQL", task.getId())
+                    : "";
+            // 直接用反射调用私有方法构建脚本比较麻烦，这里复制 buildCallbackScript 逻辑
+            String rawScript = String.format(
+                    "curl -s -X POST %s/api/internal/task/execute " +
+                            "-H \"Content-Type: application/json\" " +
+                            "-d \"{\\\"taskType\\\":\\\"SQL\\\",\\\"taskId\\\":%d,\\\"secret\\\":\\\"%s\\\"}\" " +
+                            "--max-time 7200",
+                    props.getCallbackUrl(), task.getId(), props.getCallbackSecret());
+            nodes.add(new DagNode(taskCode, task.getTaskName(), rawScript));
+        }
+
+        List<DagRelation> relations = new ArrayList<>();
+        for (SqlTaskDependency dep : deps) {
+            Long preCode = taskIdToCode.get(dep.getDependTaskId());
+            Long postCode = taskIdToCode.get(dep.getTaskId());
+            if (preCode != null && postCode != null) {
+                relations.add(new DagRelation(preCode, postCode));
+            }
+        }
+
+        return new DagData(nodes, relations);
+    }
+
+    private String buildCallbackScript(String taskType, Long taskId) {
+        return String.format(
+                "curl -s -X POST %s/api/internal/task/execute " +
+                        "-H \"Content-Type: application/json\" " +
+                        "-d \"{\\\"taskType\\\":\\\"%s\\\",\\\"taskId\\\":%d,\\\"secret\\\":\\\"%s\\\"}\" " +
+                        "--max-time 7200",
+                props.getCallbackUrl(), taskType, taskId, props.getCallbackSecret());
+    }
+
+    // ==================== 独立任务调度逻辑（原有） ====================
 
     // ==================== 通用调度逻辑 ====================
 
@@ -172,5 +336,12 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
         } catch (Exception e) {
             log.error("DS 工作流删除失败: taskId={}, processCode={}", taskId, processCode, e);
         }
+    }
+
+    @Getter
+    @RequiredArgsConstructor
+    private static class DagData {
+        private final List<DagNode> nodes;
+        private final List<DagRelation> relations;
     }
 }

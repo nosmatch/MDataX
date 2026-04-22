@@ -23,16 +23,16 @@ public class LocalTaskEngine implements TaskEngine {
     private final SqlTaskEngineService sqlTaskEngineService;
 
     @Override
-    public void executeSyncTask(Long taskId) {
-        log.info("[LocalTaskEngine] 开始执行同步任务: taskId={}", taskId);
+    public void executeSyncTask(Long taskId, Long dsInstanceId) {
+        log.info("[LocalTaskEngine] 开始执行同步任务: taskId={}, dsInstanceId={}", taskId, dsInstanceId);
         syncEngineService.execute(taskId);
         log.info("[LocalTaskEngine] 同步任务执行完成: taskId={}", taskId);
     }
 
     @Override
-    public void executeSqlTask(Long taskId) {
-        log.info("[LocalTaskEngine] 开始执行 SQL 任务: taskId={}", taskId);
-        sqlTaskEngineService.execute(taskId);
+    public void executeSqlTask(Long taskId, Long dsInstanceId) {
+        log.info("[LocalTaskEngine] 开始执行 SQL 任务: taskId={}, dsInstanceId={}", taskId, dsInstanceId);
+        sqlTaskEngineService.execute(taskId, dsInstanceId);
         log.info("[LocalTaskEngine] SQL 任务执行完成: taskId={}", taskId);
     }
 }

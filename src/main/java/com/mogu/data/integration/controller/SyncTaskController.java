@@ -113,6 +113,10 @@ public class SyncTaskController {
 
     @PostMapping("/{id}/execute")
     public Result<Void> execute(@PathVariable Long id) {
+        SyncTask task = syncTaskService.getById(id);
+        if (task == null || task.getStatus() == null || task.getStatus() != 1) {
+            return Result.error("任务已停用，无法执行");
+        }
         syncEngineService.execute(id);
         return Result.success();
     }

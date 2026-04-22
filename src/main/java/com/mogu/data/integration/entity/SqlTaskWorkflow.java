@@ -1,4 +1,4 @@
-package com.mogu.data.metadata.entity;
+package com.mogu.data.integration.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -11,30 +11,28 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * 元数据-表实体
+ * SQL任务工作流（DAG）实体
  *
  * @author fengzhu
  */
 @Data
-@TableName("metadata_table")
-public class MetadataTable {
+@TableName("sql_task_workflow")
+public class SqlTaskWorkflow {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private String databaseName;
+    private String workflowName;
 
-    private String tableName;
+    private String description;
 
-    private String tableComment;
+    private String cronExpression;
 
-    private String engine;
+    private Integer status;
 
-    private Long totalRows;
+    private Long dsProcessCode;
 
-    private Long totalBytes;
-
-    private Long ownerId;
+    private Integer dsScheduleId;
 
     @TableLogic
     @JsonIgnore
@@ -45,9 +43,4 @@ public class MetadataTable {
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updateTime;
-
-    /** 数据最近更新时间（来自 ClickHouse system.parts） */
-    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
-    private LocalDateTime lastDataUpdateTime;
-
 }

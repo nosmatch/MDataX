@@ -116,7 +116,14 @@
             <el-table-column prop="createTime" label="创建时间" min-width="160" />
             <el-table-column label="操作" width="300" fixed="right">
               <template #default="{ row }">
-                <el-button type="success" link size="small" :loading="executingId === row.id" @click="handleTaskExecute(row)">
+                <el-button
+                  type="success"
+                  link
+                  size="small"
+                  :disabled="row.status !== 1"
+                  :loading="executingId === row.id"
+                  @click="handleTaskExecute(row)"
+                >
                   执行同步
                 </el-button>
                 <el-button type="info" link size="small" @click="openLogDialog(row)">
@@ -294,7 +301,7 @@
           <el-input v-model="taskForm.timeField" placeholder="用于增量判断的时间字段名" />
         </el-form-item>
         <el-form-item label="Cron表达式" prop="cronExpression">
-          <el-input v-model="taskForm.cronExpression" placeholder="例如: 0 0 2 * * ?" />
+          <CronPicker v-model="taskForm.cronExpression" />
         </el-form-item>
         <el-form-item v-if="isTaskEdit" label="状态">
           <el-radio-group v-model="taskForm.status">
@@ -318,6 +325,8 @@ import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import request from '../utils/request.js'
+import CronPicker from '../components/CronPicker.vue'
+import { validateCron } from '../utils/cron.js'
 
 // ===== Tab =====
 const activeTab = ref('datasource')
@@ -518,7 +527,15 @@ const taskRules = {
   sourceTable: [{ required: true, message: '请选择来源表', trigger: 'change' }],
   targetTable: [{ required: true, message: '请输入目标表', trigger: 'blur' }],
   syncType: [{ required: true, message: '请选择同步类型', trigger: 'change' }],
-  timeField: [{ required: true, message: '请输入时间字段', trigger: 'blur' }]
+  timeField: [{ required: true, message: '请输入时间字段', trigger: 'blur' }],
+  cronExpression: [{
+    validator: (rule, value, callback) => {
+      if (!value) return callback()
+      const { valid, message } = validateCron(value)
+      if (!valid) callback(new Error(message))
+      else callback()
+    }, trigger: 'change'
+  }]
 }
 
 const resetTaskForm = () => {

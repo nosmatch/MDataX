@@ -8,6 +8,7 @@ import com.mogu.data.integration.entity.SqlTaskLog;
 import com.mogu.data.integration.scheduler.TaskSchedulerManager;
 import com.mogu.data.integration.service.SqlTaskEngineService;
 import com.mogu.data.integration.service.SqlTaskLogService;
+import com.mogu.data.integration.service.SqlTaskDependencyService;
 import com.mogu.data.integration.service.SqlTaskService;
 import com.mogu.data.metadata.entity.MetadataColumn;
 import com.mogu.data.metadata.entity.MetadataTable;
@@ -38,6 +39,7 @@ public class SqlTaskController {
     private final SqlTaskService sqlTaskService;
     private final SqlTaskEngineService sqlTaskEngineService;
     private final SqlTaskLogService sqlTaskLogService;
+    private final SqlTaskDependencyService dependencyService;
     private final TaskSchedulerManager schedulerManager;
     private final PermissionService permissionService;
     private final MetadataTableService metadataTableService;
@@ -66,7 +68,8 @@ public class SqlTaskController {
         task.setSqlContent(request.getSqlContent());
         task.setTargetTable(request.getTargetTable());
         task.setCronExpression(request.getCronExpression());
-        sqlTaskService.createTask(task);
+        task.setWorkflowId(request.getWorkflowId());
+        sqlTaskService.createTask(task, request.getDependTaskIds());
         return Result.success();
     }
 
@@ -79,14 +82,16 @@ public class SqlTaskController {
         task.setTargetTable(request.getTargetTable());
         task.setCronExpression(request.getCronExpression());
         task.setStatus(request.getStatus());
-        sqlTaskService.updateTask(task);
-        // 重新调度
+        sqlTaskService.updateTask(task, request.getDependTaskIds());
+        // 重新调度（仅独立任务）
         SqlTask updated = sqlTaskService.getById(id);
-        if (updated.getStatus() != null && updated.getStatus() == 1
-                && updated.getCronExpression() != null && !updated.getCronExpression().isEmpty()) {
-            schedulerManager.rescheduleSqlTask(updated);
-        } else {
-            schedulerManager.cancelSqlTask(updated.getId());
+        if (updated.getWorkflowId() == null) {
+            if (updated.getStatus() != null && updated.getStatus() == 1
+                    && updated.getCronExpression() != null && !updated.getCronExpression().isEmpty()) {
+                schedulerManager.rescheduleSqlTask(updated);
+            } else {
+                schedulerManager.cancelSqlTask(updated.getId());
+            }
         }
         return Result.success();
     }
@@ -100,19 +105,42 @@ public class SqlTaskController {
     @PostMapping("/{id}/toggle")
     public Result<Void> toggleStatus(@PathVariable Long id) {
         SqlTask task = sqlTaskService.toggleStatus(id);
-        if (task.getStatus() != null && task.getStatus() == 1
-                && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
-            schedulerManager.scheduleSqlTask(task);
-        } else {
-            schedulerManager.cancelSqlTask(id);
+        // 仅独立任务需要直接调度操作；Workflow 内任务通过 Workflow 统一调度
+        if (task.getWorkflowId() == null) {
+            if (task.getStatus() != null && task.getStatus() == 1
+                    && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
+                schedulerManager.scheduleSqlTask(task);
+            } else {
+                schedulerManager.cancelSqlTask(id);
+            }
         }
         return Result.success();
     }
 
     @PostMapping("/{id}/execute")
     public Result<Void> execute(@PathVariable Long id) {
+        SqlTask task = sqlTaskService.getById(id);
+        if (task == null || task.getStatus() == null || task.getStatus() != 1) {
+            return Result.error("任务已停用，无法执行");
+        }
         sqlTaskEngineService.execute(id);
         return Result.success();
+    }
+
+    @PostMapping("/{id}/run-with-dependencies")
+    public Result<Void> runWithDependencies(@PathVariable Long id) {
+        sqlTaskService.runWithDependencies(id);
+        return Result.success();
+    }
+
+    @GetMapping("/{id}/dependencies")
+    public Result<List<Long>> getDependencies(@PathVariable Long id) {
+        return Result.success(dependencyService.getDependTaskIds(id));
+    }
+
+    @GetMapping("/{id}/downstream")
+    public Result<List<Long>> getDownstream(@PathVariable Long id) {
+        return Result.success(dependencyService.getDownstreamTaskIds(id));
     }
 
     @GetMapping("/{id}/logs")
@@ -169,6 +197,8 @@ public class SqlTaskController {
         private String sqlContent;
         private String targetTable;
         private String cronExpression;
+        private Long workflowId;
+        private List<Long> dependTaskIds;
     }
 
     @Data
@@ -178,6 +208,8 @@ public class SqlTaskController {
         private String targetTable;
         private String cronExpression;
         private Integer status;
+        private Long workflowId;
+        private List<Long> dependTaskIds;
     }
 
 }

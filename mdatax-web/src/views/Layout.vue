@@ -43,6 +43,7 @@
             <el-menu-item index="/query">SQL查询</el-menu-item>
             <el-menu-item index="/development">SQL开发</el-menu-item>
             <el-menu-item index="/development/tasks">任务管理</el-menu-item>
+            <el-menu-item index="/workflows">工作流管理</el-menu-item>
           </el-sub-menu>
           <el-menu-item index="/assets">
             <el-icon><Folder /></el-icon>

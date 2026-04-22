@@ -32,9 +32,13 @@ public class SqlTask {
 
     private Integer status;
 
+    private Long workflowId;
+
     private Long dsProcessCode;
 
     private Integer dsScheduleId;
+
+    private Long dsTaskCode;
 
     private Integer retryTimes;
 

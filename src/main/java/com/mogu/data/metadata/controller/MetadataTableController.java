@@ -5,12 +5,13 @@ import com.mogu.data.common.LoginUser;
 import com.mogu.data.common.Result;
 import com.mogu.data.metadata.entity.MetadataColumn;
 import com.mogu.data.metadata.entity.MetadataTable;
+import com.mogu.data.metadata.entity.TableAccessHistory;
 import com.mogu.data.metadata.mapper.MetadataTableMapper;
 import com.mogu.data.metadata.service.MetadataCollectorService;
 import com.mogu.data.metadata.service.MetadataTableService;
+import com.mogu.data.metadata.service.TableAccessHistoryService;
 import com.mogu.data.metadata.vo.TableDetailVO;
 import com.mogu.data.metadata.vo.TablePageVO;
-import com.mogu.data.metadata.vo.TablePermissionVO;
 import com.mogu.data.query.service.QueryService;
 import com.mogu.data.query.vo.QueryResultVO;
 import com.mogu.data.system.service.PermissionService;
@@ -19,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -40,6 +42,7 @@ public class MetadataTableController {
     private final PermissionService permissionService;
     private final QueryService queryService;
     private final com.mogu.data.metadata.service.UserTableVisitService userTableVisitService;
+    private final TableAccessHistoryService tableAccessHistoryService;
 
     /**
      * 手动触发 ClickHouse 元数据采集
@@ -128,22 +131,19 @@ public class MetadataTableController {
     }
 
     /**
-     * 表详情-权限信息（Tab3）
+     * 表详情-访问历史（Tab3）
      */
-    @GetMapping("/tables/{id}/permission")
-    public Result<TablePermissionVO> getPermission(@PathVariable Long id) {
+    @GetMapping("/tables/{id}/access-history")
+    public Result<Page<TableAccessHistory>> getAccessHistory(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") long page,
+            @RequestParam(defaultValue = "10") long size) {
         MetadataTable table = tableMapper.selectById(id);
         if (table == null || table.getDeleted() != null && table.getDeleted() == 1) {
             return Result.error("表不存在");
         }
-
-        Long userId = LoginUser.currentUserId();
-        String fullTableName = table.getDatabaseName() + "." + table.getTableName();
-
-        TablePermissionVO vo = new TablePermissionVO();
-        vo.setRead(permissionService.hasReadPermission(userId, fullTableName));
-        vo.setWrite(permissionService.hasWritePermission(userId, fullTableName));
-        return Result.success(vo);
+        Page<TableAccessHistory> result = tableAccessHistoryService.pageHistory(id, page, size);
+        return Result.success(result);
     }
 
     /**
@@ -164,7 +164,7 @@ public class MetadataTableController {
      * 表数据预览（前100条）
      */
     @GetMapping("/tables/{id}/preview")
-    public Result<QueryResultVO> preview(@PathVariable Long id) {
+    public Result<QueryResultVO> preview(@PathVariable Long id, HttpServletRequest request) {
         MetadataTable table = tableMapper.selectById(id);
         if (table == null || table.getDeleted() != null && table.getDeleted() == 1) {
             return Result.error("表不存在");
@@ -179,6 +179,7 @@ public class MetadataTableController {
         String sql = "SELECT * FROM " + fullTableName + " LIMIT 100";
         QueryResultVO vo = queryService.execute(sql, userId);
         userTableVisitService.recordVisit(userId, table.getDatabaseName(), table.getTableName());
+        tableAccessHistoryService.recordRead(userId, LoginUser.currentUsername(), table.getDatabaseName(), table.getTableName(), request.getRemoteAddr());
         return Result.success(vo);
     }
 

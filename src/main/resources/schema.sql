@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS metadata_table (
     total_rows BIGINT DEFAULT NULL COMMENT '数据行数',
     total_bytes BIGINT DEFAULT NULL COMMENT '数据大小(字节)',
     owner_id BIGINT DEFAULT 1 COMMENT '责任人ID',
+    last_data_update_time DATETIME DEFAULT NULL COMMENT '数据最近更新时间',
     deleted TINYINT DEFAULT 0 COMMENT '删除标记',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -208,3 +209,19 @@ CREATE TABLE IF NOT EXISTS user_table_visit (
     UNIQUE KEY uk_user_table (user_id, database_name, table_name),
     INDEX idx_user_id (user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表访问记录';
+
+-- 表访问历史记录（人工操作：SQL查询、表预览等）
+CREATE TABLE IF NOT EXISTS table_access_history (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'ID',
+    user_id BIGINT NOT NULL COMMENT '用户ID',
+    username VARCHAR(64) DEFAULT NULL COMMENT '用户名',
+    table_id BIGINT DEFAULT NULL COMMENT '表ID（关联 metadata_table）',
+    database_name VARCHAR(64) NOT NULL COMMENT '数据库名',
+    table_name VARCHAR(128) NOT NULL COMMENT '表名',
+    access_type VARCHAR(16) NOT NULL COMMENT '访问类型：READ-读 WRITE-写',
+    access_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '访问时间',
+    ip VARCHAR(64) DEFAULT NULL COMMENT 'IP地址',
+    INDEX idx_table_id_access_time (table_id, access_time),
+    INDEX idx_user_id (user_id),
+    INDEX idx_access_time (access_time)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='表访问历史记录';

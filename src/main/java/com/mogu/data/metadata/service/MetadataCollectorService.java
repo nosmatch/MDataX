@@ -46,6 +46,29 @@ public class MetadataCollectorService {
                         "WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA')"
         );
 
+        // 1.5 从 system.parts 获取每张表的数据最近更新时间
+        List<Map<String, Object>> chParts = clickHouseJdbcTemplate.queryForList(
+                "SELECT database, table, max(modification_time) as last_update " +
+                        "FROM system.parts " +
+                        "WHERE database NOT IN ('system', 'information_schema', 'INFORMATION_SCHEMA') AND active = 1 " +
+                        "GROUP BY database, table"
+        );
+        Map<String, java.time.LocalDateTime> lastUpdateMap = chParts.stream()
+                .collect(Collectors.toMap(
+                        r -> r.get("database") + "." + r.get("table"),
+                        r -> {
+                            Object val = r.get("last_update");
+                            if (val instanceof java.sql.Timestamp) {
+                                return ((java.sql.Timestamp) val).toLocalDateTime();
+                            }
+                            if (val instanceof java.time.LocalDateTime) {
+                                return (java.time.LocalDateTime) val;
+                            }
+                            return null;
+                        },
+                        (existing, replacement) -> existing
+                ));
+
         // 2. 读取本地所有未删除的表
         List<MetadataTable> localTables = tableMapper.selectList(
                 new QueryWrapper<MetadataTable>().eq("deleted", 0)
@@ -82,22 +105,26 @@ public class MetadataCollectorService {
                 newTable.setTotalBytes(totalBytes);
                 newTable.setTableComment(comment);
                 newTable.setOwnerId(1L); // 默认责任人：管理员
+                newTable.setLastDataUpdateTime(lastUpdateMap.get(key));
                 tableMapper.insert(newTable);
 
                 syncColumns(newTable.getId(), db, name);
                 log.info("新增表元数据: {}", key);
             } else {
                 // 更新表（字段有变化时才更新）
+                java.time.LocalDateTime lastDataUpdateTime = lastUpdateMap.get(key);
                 boolean changed = !Objects.equals(localTable.getEngine(), engine)
                         || !Objects.equals(localTable.getTotalRows(), totalRows)
                         || !Objects.equals(localTable.getTotalBytes(), totalBytes)
-                        || !Objects.equals(localTable.getTableComment(), comment);
+                        || !Objects.equals(localTable.getTableComment(), comment)
+                        || !Objects.equals(localTable.getLastDataUpdateTime(), lastDataUpdateTime);
 
                 if (changed) {
                     localTable.setEngine(engine);
                     localTable.setTotalRows(totalRows);
                     localTable.setTotalBytes(totalBytes);
                     localTable.setTableComment(comment);
+                    localTable.setLastDataUpdateTime(lastDataUpdateTime);
                     tableMapper.updateById(localTable);
                     log.info("更新表元数据: {}", key);
                 }

@@ -18,7 +18,11 @@ public interface TaskEngine {
      *
      * @param taskId 同步任务ID
      */
-    void executeSyncTask(Long taskId);
+    default void executeSyncTask(Long taskId) {
+        executeSyncTask(taskId, null);
+    }
+
+    void executeSyncTask(Long taskId, Long dsInstanceId);
 
     /**
      * 执行 SQL 任务。
@@ -27,5 +31,9 @@ public interface TaskEngine {
      *
      * @param taskId SQL 任务ID
      */
-    void executeSqlTask(Long taskId);
+    default void executeSqlTask(Long taskId) {
+        executeSqlTask(taskId, null);
+    }
+
+    void executeSqlTask(Long taskId, Long dsInstanceId);
 }

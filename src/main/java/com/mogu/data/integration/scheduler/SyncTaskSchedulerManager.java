@@ -2,6 +2,7 @@ package com.mogu.data.integration.scheduler;
 
 import com.mogu.data.integration.entity.SqlTask;
 import com.mogu.data.integration.entity.SyncTask;
+import com.mogu.data.integration.util.CronUtils;
 import com.mogu.data.integration.service.SyncEngineService;
 import com.mogu.data.integration.service.SyncTaskService;
 import lombok.extern.slf4j.Slf4j;
@@ -66,7 +67,7 @@ public class SyncTaskSchedulerManager implements TaskSchedulerManager {
      */
     public void schedule(Long taskId, String cronExpression) {
         cancel(taskId);
-        String springCron = convertQuartzToSpringCron(cronExpression);
+        String springCron = CronUtils.convertQuartzToSpringCron(cronExpression);
         try {
             CronTrigger trigger = new CronTrigger(springCron);
             ScheduledFuture<?> future = taskScheduler.schedule(() -> executeTask(taskId), trigger);
@@ -108,31 +109,6 @@ public class SyncTaskSchedulerManager implements TaskSchedulerManager {
         } catch (Exception e) {
             log.error("定时同步任务执行失败: taskId={}", taskId, e);
         }
-    }
-
-    /**
-     * 将 Quartz Cron 表达式转换为 Spring Cron 表达式
-     * Quartz: 秒 分 时 日 月 周 [年]  支持 ?
-     * Spring: 秒 分 时 日 月 周      不支持 ?
-     */
-    public static String convertQuartzToSpringCron(String quartzCron) {
-        if (quartzCron == null || quartzCron.isEmpty()) {
-            return quartzCron;
-        }
-        String[] parts = quartzCron.trim().split("\\s+");
-        // 去掉第7位（年字段）
-        if (parts.length >= 7) {
-            String[] newParts = new String[6];
-            System.arraycopy(parts, 0, newParts, 0, 6);
-            parts = newParts;
-        }
-        // 将 ? 替换为 *
-        for (int i = 0; i < parts.length; i++) {
-            if ("?".equals(parts[i])) {
-                parts[i] = "*";
-            }
-        }
-        return String.join(" ", parts);
     }
 
     // ==================== TaskSchedulerManager 接口实现 ====================
@@ -181,6 +157,26 @@ public class SyncTaskSchedulerManager implements TaskSchedulerManager {
     @Override
     public void rescheduleSqlTask(SqlTask task) {
         throw new UnsupportedOperationException("SyncTaskSchedulerManager 不支持 SQL 任务调度");
+    }
+
+    @Override
+    public void scheduleWorkflow(com.mogu.data.integration.entity.SqlTaskWorkflow workflow) {
+        throw new UnsupportedOperationException("本地调度器不支持 Workflow");
+    }
+
+    @Override
+    public void cancelWorkflow(Long workflowId) {
+        throw new UnsupportedOperationException("本地调度器不支持 Workflow");
+    }
+
+    @Override
+    public void deleteWorkflow(Long workflowId) {
+        throw new UnsupportedOperationException("本地调度器不支持 Workflow");
+    }
+
+    @Override
+    public void rescheduleWorkflow(com.mogu.data.integration.entity.SqlTaskWorkflow workflow) {
+        throw new UnsupportedOperationException("本地调度器不支持 Workflow");
     }
 
 }

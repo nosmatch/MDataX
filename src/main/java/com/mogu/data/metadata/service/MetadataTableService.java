@@ -66,6 +66,7 @@ public class MetadataTableService extends ServiceImpl<MetadataTableMapper, Metad
             vo.setOwnerName(userNameMap.getOrDefault(t.getOwnerId(), ""));
             vo.setCreateTime(t.getCreateTime());
             vo.setUpdateTime(t.getUpdateTime());
+            vo.setLastDataUpdateTime(t.getLastDataUpdateTime());
             return vo;
         }).collect(Collectors.toList());
 
@@ -100,6 +101,7 @@ public class MetadataTableService extends ServiceImpl<MetadataTableMapper, Metad
         vo.setOwnerName(userNameMap.getOrDefault(table.getOwnerId(), ""));
         vo.setCreateTime(table.getCreateTime());
         vo.setUpdateTime(table.getUpdateTime());
+        vo.setLastDataUpdateTime(table.getLastDataUpdateTime());
         return vo;
     }
 

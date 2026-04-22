@@ -40,6 +40,7 @@
         </el-table-column>
         <el-table-column prop="tableComment" label="描述" min-width="180" show-overflow-tooltip />
         <el-table-column prop="ownerName" label="责任人" min-width="100" />
+        <el-table-column prop="lastDataUpdateTime" label="最近更新时间" min-width="160" />
         <el-table-column label="读权限" width="90" align="center">
           <template #default="{ row }">
             <el-tag :type="row.read ? 'success' : 'danger'" size="small">

@@ -1,9 +1,11 @@
 package com.mogu.data.query.service;
 
 import com.mogu.data.common.BusinessException;
+import com.mogu.data.common.LoginUser;
 import com.mogu.data.query.vo.ExecuteOptions;
 import com.mogu.data.query.vo.QueryResultVO;
 import com.mogu.data.system.service.PermissionService;
+import com.mogu.data.metadata.service.TableAccessHistoryService;
 import com.mogu.data.metadata.service.UserTableVisitService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ public class QueryService {
     private final ClickHouseQueryService clickHouseQueryService;
     private final PermissionService permissionService;
     private final UserTableVisitService userTableVisitService;
+    private final TableAccessHistoryService tableAccessHistoryService;
 
     /**
      * 执行 SQL 查询（仅 SELECT，带权限校验、LIMIT 限制、超时控制）
@@ -58,16 +61,72 @@ public class QueryService {
         }
 
         // 4. 记录表访问
+        String username = LoginUser.currentUsername();
         for (String table : tables) {
             int dot = table.indexOf('.');
             if (dot > 0) {
-                userTableVisitService.recordVisit(userId, table.substring(0, dot), table.substring(dot + 1));
+                String dbName = table.substring(0, dot);
+                String tblName = table.substring(dot + 1);
+                userTableVisitService.recordVisit(userId, dbName, tblName);
+                tableAccessHistoryService.recordRead(userId, username, dbName, tblName, null);
             }
         }
 
         // 5. 通过统一引擎执行（只读、限制 100 条、超时 5 秒）
         ExecuteOptions options = ExecuteOptions.builder()
                 .readonly(true)
+                .maxRows(100)
+                .timeoutSeconds(5)
+                .build();
+
+        return clickHouseQueryService.execute(trimmed, options);
+    }
+
+    /**
+     * 执行 SQL 开发语句（支持 SELECT / DDL / DML，带权限校验）
+     */
+    public QueryResultVO executeDev(String sql, Long userId) {
+        if (sql == null || sql.trim().isEmpty()) {
+            throw new BusinessException("SQL 不能为空");
+        }
+
+        String trimmed = sql.trim();
+        boolean isSelect = isSelectStatement(trimmed);
+
+        // 解析 SQL 中涉及的所有表名
+        Set<String> tables = extractAllTableNames(trimmed);
+
+        if (isSelect) {
+            // 纯 SELECT：读权限校验 + 访问记录
+            if (tables.isEmpty()) {
+                throw new BusinessException("无法解析 SQL 中涉及的表名");
+            }
+            for (String table : tables) {
+                if (!permissionService.hasReadPermission(userId, table)) {
+                    throw new BusinessException("无权限查询表: " + table);
+                }
+            }
+            String username = LoginUser.currentUsername();
+            for (String table : tables) {
+                int dot = table.indexOf('.');
+                if (dot > 0) {
+                    String dbName = table.substring(0, dot);
+                    String tblName = table.substring(dot + 1);
+                    userTableVisitService.recordVisit(userId, dbName, tblName);
+                    tableAccessHistoryService.recordRead(userId, username, dbName, tblName, null);
+                }
+            }
+        } else {
+            // DDL / DML：写权限校验（对能解析到的表）
+            for (String table : tables) {
+                if (!permissionService.hasWritePermission(userId, table)) {
+                    throw new BusinessException("无权限操作表: " + table);
+                }
+            }
+        }
+
+        ExecuteOptions options = ExecuteOptions.builder()
+                .readonly(false)
                 .maxRows(100)
                 .timeoutSeconds(5)
                 .build();
@@ -110,13 +169,13 @@ public class QueryService {
         String cleaned = removeCommentsAndStrings(sql);
 
         Pattern pattern = Pattern.compile(
-                "\\b(FROM|JOIN)\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?",
+                "\\b(?:FROM|JOIN)\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?",
                 Pattern.CASE_INSENSITIVE
         );
         Matcher matcher = pattern.matcher(cleaned);
         while (matcher.find()) {
-            String dbOrTable = matcher.group(2);
-            String tableOnly = matcher.group(3);
+            String dbOrTable = matcher.group(1);
+            String tableOnly = matcher.group(2);
             if (tableOnly != null) {
                 tables.add(dbOrTable + "." + tableOnly);
             } else {
@@ -125,6 +184,39 @@ public class QueryService {
             }
         }
         return tables;
+    }
+
+    /**
+     * 从 SQL 中提取所有涉及的表名（读 + 写操作）
+     */
+    private Set<String> extractAllTableNames(String sql) {
+        Set<String> tables = new HashSet<>();
+        String cleaned = removeCommentsAndStrings(sql);
+
+        collectTableNames(cleaned, "\\b(?:FROM|JOIN)\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
+        collectTableNames(cleaned, "\\bINSERT\\s+INTO\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
+        collectTableNames(cleaned, "\\bUPDATE\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
+        collectTableNames(cleaned, "\\bDELETE\\s+FROM\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
+        collectTableNames(cleaned, "\\bCREATE\\s+(?:TABLE|VIEW|DICTIONARY)\\s+(?:IF\\s+NOT\\s+EXISTS\\s+)?`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
+        collectTableNames(cleaned, "\\bDROP\\s+(?:TABLE|VIEW|DICTIONARY)\\s+(?:IF\\s+EXISTS\\s+)?`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
+        collectTableNames(cleaned, "\\bALTER\\s+TABLE\\s+`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
+        collectTableNames(cleaned, "\\bTRUNCATE\\s+(?:TABLE\\s+)?`?([a-zA-Z0-9_]+)`?(?:\\.`?([a-zA-Z0-9_]+)`?)?", tables);
+
+        return tables;
+    }
+
+    private void collectTableNames(String cleaned, String regex, Set<String> tables) {
+        Pattern pattern = Pattern.compile(regex, Pattern.CASE_INSENSITIVE);
+        Matcher matcher = pattern.matcher(cleaned);
+        while (matcher.find()) {
+            String part1 = matcher.group(1);
+            String part2 = matcher.group(2);
+            if (part2 != null) {
+                tables.add(part1 + "." + part2);
+            } else if (part1 != null) {
+                tables.add("default." + part1);
+            }
+        }
     }
 
 }

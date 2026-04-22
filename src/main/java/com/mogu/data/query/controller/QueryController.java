@@ -41,7 +41,12 @@ public class QueryController {
         if (userId == null) {
             return Result.error("用户未登录");
         }
-        QueryResultVO result = queryService.execute(request.getSql(), userId);
+        QueryResultVO result;
+        if (request.isReadonly()) {
+            result = queryService.execute(request.getSql(), userId);
+        } else {
+            result = queryService.executeDev(request.getSql(), userId);
+        }
         return Result.success(result);
     }
 

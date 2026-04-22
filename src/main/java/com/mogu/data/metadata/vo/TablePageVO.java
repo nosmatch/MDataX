@@ -37,6 +37,10 @@ public class TablePageVO {
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updateTime;
 
+    /** 数据最近更新时间 */
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime lastDataUpdateTime;
+
     private boolean read;
 
     private boolean write;

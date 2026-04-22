@@ -30,5 +30,5 @@ public class InternalExecuteRequest {
     /**
      * DS 流程实例ID（可选，用于日志关联）
      */
-    private Long instanceId;
+    private String instanceId;
 }
