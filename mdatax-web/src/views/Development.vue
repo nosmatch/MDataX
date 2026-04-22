@@ -205,6 +205,7 @@ import MonacoEditor from '../components/MonacoEditor.vue'
 import request from '../utils/request.js'
 import CronPicker from '../components/CronPicker.vue'
 import { validateCron } from '../utils/cron.js'
+import { useEditorStore } from '../stores/editor.js'
 
 const route = useRoute()
 
@@ -297,7 +298,11 @@ const handleTableSelect = (index) => {
 }
 
 // === SQL 编辑器 ===
-const sql = ref('')
+const editorStore = useEditorStore()
+const sql = computed({
+  get: () => editorStore.developmentSql,
+  set: (v) => editorStore.setDevelopmentSql(v)
+})
 const executing = ref(false)
 const resultLoaded = ref(false)
 const result = ref({
@@ -385,7 +390,7 @@ const formatSql = () => {
 }
 
 const clearSql = () => {
-  sql.value = ''
+  editorStore.clearDevelopmentSql()
   resultLoaded.value = false
 }
 

@@ -135,6 +135,7 @@ import { VideoPlay, Delete, MagicStick } from '@element-plus/icons-vue'
 import { format } from 'sql-formatter'
 import MonacoEditor from '../components/MonacoEditor.vue'
 import request from '../utils/request.js'
+import { useEditorStore } from '../stores/editor.js'
 
 // === 拖拽调整大小 ===
 const leftWidth = ref(260)
@@ -225,7 +226,11 @@ const handleTableSelect = (index) => {
 }
 
 // === 右侧编辑器 ===
-const sql = ref('')
+const editorStore = useEditorStore()
+const sql = computed({
+  get: () => editorStore.querySql,
+  set: (v) => editorStore.setQuerySql(v)
+})
 const executing = ref(false)
 const resultLoaded = ref(false)
 const result = ref({
@@ -315,7 +320,7 @@ const formatSql = () => {
 }
 
 const clearSql = () => {
-  sql.value = ''
+  editorStore.clearQuerySql()
   resultLoaded.value = false
 }
 
