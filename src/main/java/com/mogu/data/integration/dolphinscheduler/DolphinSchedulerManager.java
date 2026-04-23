@@ -111,49 +111,45 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
             log.warn("DolphinScheduler 未启用，跳过 Workflow 调度注册: workflowId={}", workflow.getId());
             return;
         }
-        try {
-            DagData dagData = buildDagData(workflow.getId());
-            String processName = "WORKFLOW-" + workflow.getWorkflowName();
+        DagData dagData = buildDagData(workflow.getId());
+        String processName = "WORKFLOW-" + workflow.getWorkflowName();
 
-            // 当 DS 重置后，旧 processCode 可能已不存在，需要检查
-            Long processCode = workflow.getDsProcessCode();
-            boolean needRecreate = false;
-            if (processCode != null && !dsClient.processExists(processCode)) {
-                log.warn("DS Workflow 已不存在，将重新创建: workflowId={}, oldProcessCode={}",
-                        workflow.getId(), processCode);
-                processCode = null;
-                needRecreate = true;
-            }
-
-            processCode = dsClient.createOrUpdateDagProcess(
-                    processCode, processName,
-                    dagData.getNodes(), dagData.getRelations());
-            workflow.setDsProcessCode(processCode);
-            log.info("DS Workflow 工作流创建/更新成功: workflowId={}, processCode={}",
+        // 当 DS 重置后，旧 processCode 可能已不存在，需要检查
+        Long processCode = workflow.getDsProcessCode();
+        boolean needRecreate = false;
+        if (processCode != null && !dsClient.processExists(processCode)) {
+            log.warn("DS Workflow 已不存在，将重新创建: workflowId={}, oldProcessCode={}",
                     workflow.getId(), processCode);
+            processCode = null;
+            needRecreate = true;
+        }
 
-            // 上线工作流
-            dsClient.releaseProcess(processCode, "ONLINE");
+        processCode = dsClient.createOrUpdateDagProcess(
+                processCode, processName,
+                dagData.getNodes(), dagData.getRelations());
+        workflow.setDsProcessCode(processCode);
+        log.info("DS Workflow 工作流创建/更新成功: workflowId={}, processCode={}",
+                workflow.getId(), processCode);
 
-            // 处理定时调度
-            String cron = workflow.getCronExpression();
-            if (cron != null && !cron.isEmpty()) {
-                Integer scheduleId;
-                if (workflow.getDsScheduleId() == null || needRecreate) {
-                    scheduleId = dsClient.createSchedule(processCode, cron);
-                    workflow.setDsScheduleId(scheduleId);
-                    log.info("DS Workflow 定时调度创建成功: workflowId={}, scheduleId={}",
-                            workflow.getId(), scheduleId);
-                } else {
-                    dsClient.updateSchedule(processCode, workflow.getDsScheduleId(), cron);
-                    scheduleId = workflow.getDsScheduleId();
-                    log.info("DS Workflow 定时调度更新成功: workflowId={}, scheduleId={}",
-                            workflow.getId(), scheduleId);
-                }
-                dsClient.onlineSchedule(processCode, scheduleId);
+        // 上线工作流
+        dsClient.releaseProcess(processCode, "ONLINE");
+
+        // 处理定时调度
+        String cron = workflow.getCronExpression();
+        if (cron != null && !cron.isEmpty()) {
+            Integer scheduleId;
+            if (workflow.getDsScheduleId() == null || needRecreate) {
+                scheduleId = dsClient.createSchedule(processCode, cron);
+                workflow.setDsScheduleId(scheduleId);
+                log.info("DS Workflow 定时调度创建成功: workflowId={}, scheduleId={}",
+                        workflow.getId(), scheduleId);
+            } else {
+                dsClient.updateSchedule(processCode, workflow.getDsScheduleId(), cron);
+                scheduleId = workflow.getDsScheduleId();
+                log.info("DS Workflow 定时调度更新成功: workflowId={}, scheduleId={}",
+                        workflow.getId(), scheduleId);
             }
-        } catch (Exception e) {
-            log.error("DS Workflow 调度注册失败: workflowId={}", workflow.getId(), e);
+            dsClient.onlineSchedule(processCode, scheduleId);
         }
     }
 

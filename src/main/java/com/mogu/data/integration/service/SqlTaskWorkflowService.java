@@ -62,6 +62,9 @@ public class SqlTaskWorkflowService extends ServiceImpl<SqlTaskWorkflowMapper, S
                 .eq(SqlTaskWorkflow::getDeleted, 0).count() > 0) {
             throw new IllegalArgumentException("工作流名称已存在");
         }
+        if (!StringUtils.hasText(workflow.getCronExpression())) {
+            throw new IllegalArgumentException("工作流必须配置 Cron 表达式");
+        }
         workflow.setStatus(0);
         save(workflow);
         log.info("SQL工作流创建成功: workflowId={}, name={}", workflow.getId(), workflow.getWorkflowName());
