@@ -47,6 +47,7 @@ public class UserController {
 
     @PostMapping
     public Result<Void> create(@Valid @RequestBody UserCreateRequest request) {
+        requireAdmin();
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(request.getPassword());
@@ -58,6 +59,10 @@ public class UserController {
 
     @PutMapping("/{id}")
     public Result<Void> update(@PathVariable Long id, @RequestBody UserUpdateRequest request) {
+        Long currentUserId = LoginUser.currentUserId();
+        if (!LoginUser.isCurrentAdmin() && !id.equals(currentUserId)) {
+            throw new com.mogu.data.common.BusinessException("无权限，只能修改自己的信息");
+        }
         User user = new User();
         user.setId(id);
         user.setUsername(request.getUsername());
@@ -71,6 +76,7 @@ public class UserController {
 
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
+        requireAdmin();
         userService.deleteUser(id);
         return Result.success();
     }
@@ -82,6 +88,7 @@ public class UserController {
 
     @PostMapping("/{id}/roles")
     public Result<Void> assignRoles(@PathVariable Long id, @RequestBody List<Long> roleIds) {
+        requireAdmin();
         userService.assignRoles(id, roleIds);
         return Result.success();
     }
@@ -90,7 +97,15 @@ public class UserController {
     public Result<Map<String, Object>> getCurrentUser() {
         Long userId = LoginUser.currentUserId();
         User user = userService.getById(userId);
-        return Result.success(toUserMap(user));
+        Map<String, Object> map = toUserMap(user);
+        map.put("isAdmin", LoginUser.isCurrentAdmin());
+        return Result.success(map);
+    }
+
+    private void requireAdmin() {
+        if (!LoginUser.isCurrentAdmin()) {
+            throw new com.mogu.data.common.BusinessException("无权限，仅管理员可操作");
+        }
     }
 
     private Map<String, Object> toUserMap(User user) {

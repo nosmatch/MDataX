@@ -82,12 +82,7 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
             // ========== 独立任务 ==========
             task.setStatus(0);
             save(task);
-
-            if (task.getStatus() != null && task.getStatus() == 1
-                    && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
-                schedulerManager.scheduleSqlTask(task);
-                updateById(task);
-            }
+            // 调度由 toggleStatus 统一控制，创建时不自动注册
         }
     }
 
@@ -134,11 +129,13 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
             }
         } else {
             // ========== 独立任务 ==========
-            boolean cronChanged = task.getCronExpression() != null
-                    && !task.getCronExpression().equals(exist.getCronExpression());
+            String newCron = task.getCronExpression();
+            String oldCron = exist.getCronExpression();
+            boolean cronChanged = (newCron == null && oldCron != null)
+                    || (newCron != null && !newCron.equals(oldCron));
             updateById(task);
 
-            if (cronChanged) {
+            if (cronChanged && exist.getStatus() != null && exist.getStatus() == 1) {
                 SqlTask updated = getById(task.getId());
                 schedulerManager.rescheduleSqlTask(updated);
                 updateById(updated);

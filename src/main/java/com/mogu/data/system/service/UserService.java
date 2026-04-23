@@ -3,8 +3,10 @@ package com.mogu.data.system.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.mogu.data.system.entity.Role;
 import com.mogu.data.system.entity.User;
 import com.mogu.data.system.entity.UserRole;
+import com.mogu.data.system.mapper.RoleMapper;
 import com.mogu.data.system.mapper.UserMapper;
 import com.mogu.data.system.mapper.UserRoleMapper;
 import lombok.RequiredArgsConstructor;
@@ -26,6 +28,7 @@ import java.util.stream.Collectors;
 public class UserService extends ServiceImpl<UserMapper, User> {
 
     private final UserRoleMapper userRoleMapper;
+    private final RoleMapper roleMapper;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     public Page<User> pageUsers(String keyword, Integer status, long page, long size) {
@@ -99,6 +102,18 @@ public class UserService extends ServiceImpl<UserMapper, User> {
         return userRoleMapper.selectList(
                 new LambdaQueryWrapper<UserRole>().eq(UserRole::getUserId, userId)
         ).stream().map(UserRole::getRoleId).collect(Collectors.toList());
+    }
+
+    /**
+     * 判断用户是否为管理员（拥有 roleCode = admin 的角色）
+     */
+    public boolean isAdmin(Long userId) {
+        List<Long> roleIds = getUserRoleIds(userId);
+        if (roleIds.isEmpty()) {
+            return false;
+        }
+        List<Role> roles = roleMapper.selectBatchIds(roleIds);
+        return roles.stream().anyMatch(r -> "admin".equals(r.getRoleCode()));
     }
 
 }

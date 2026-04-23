@@ -42,19 +42,19 @@ public class DolphinSchedulerClient {
      * @param taskId   任务ID
      * @return 工作流定义编码
      */
-    public Long createSingleNodeProcess(String name, String taskType, Long taskId) {
-        long taskCode = generateTaskCode();
+    public Long createSingleNodeProcess(String name, String taskType, Long taskId, Long taskCode) {
+        long tc = taskCode != null ? taskCode : generateTaskCode();
         String rawScript = buildCallbackScript(taskType, taskId);
 
         // 构建 TaskNode
-        Map<String, Object> taskNode = buildShellTaskNode(taskCode, name, rawScript);
+        Map<String, Object> taskNode = buildShellTaskNode(tc, name, rawScript);
 
         // 构建 TaskRelation
         List<Map<String, Object>> taskRelations = new ArrayList<>();
         Map<String, Object> relation = new HashMap<>();
         relation.put("name", "");
         relation.put("preTaskCode", 0);
-        relation.put("postTaskCode", taskCode);
+        relation.put("postTaskCode", tc);
         relation.put("preTaskVersion", 0);
         relation.put("postTaskVersion", 1);
         relation.put("conditionType", "NONE");
@@ -64,7 +64,7 @@ public class DolphinSchedulerClient {
         // 构建 locations（DS 3.2 要求为数组字符串）
         List<Map<String, Object>> locationList = new ArrayList<>();
         Map<String, Object> location = new HashMap<>();
-        location.put("taskCode", taskCode);
+        location.put("taskCode", tc);
         location.put("x", 100);
         location.put("y", 100);
         locationList.add(location);
@@ -132,17 +132,17 @@ public class DolphinSchedulerClient {
     /**
      * 更新单节点工作流
      */
-    public void updateSingleNodeProcess(Long processCode, String name, String taskType, Long taskId) {
-        long taskCode = generateTaskCode();
+    public void updateSingleNodeProcess(Long processCode, String name, String taskType, Long taskId, Long taskCode) {
+        long tc = taskCode != null ? taskCode : generateTaskCode();
         String rawScript = buildCallbackScript(taskType, taskId);
 
-        Map<String, Object> taskNode = buildShellTaskNode(taskCode, name, rawScript);
+        Map<String, Object> taskNode = buildShellTaskNode(tc, name, rawScript);
 
         List<Map<String, Object>> taskRelations = new ArrayList<>();
         Map<String, Object> relation = new HashMap<>();
         relation.put("name", "");
         relation.put("preTaskCode", 0);
-        relation.put("postTaskCode", taskCode);
+        relation.put("postTaskCode", tc);
         relation.put("preTaskVersion", 0);
         relation.put("postTaskVersion", 1);
         relation.put("conditionType", "NONE");
@@ -151,7 +151,7 @@ public class DolphinSchedulerClient {
 
         List<Map<String, Object>> locationList = new ArrayList<>();
         Map<String, Object> location = new HashMap<>();
-        location.put("taskCode", taskCode);
+        location.put("taskCode", tc);
         location.put("x", 100);
         location.put("y", 100);
         locationList.add(location);
@@ -185,8 +185,34 @@ public class DolphinSchedulerClient {
 
         String url = buildUrl(String.format("/projects/%d/process-definition/%d/release",
                 props.getProjectCode(), processCode));
-        postForm(url, request);
-        log.info("DS 工作流已{}: processCode={}", "ONLINE".equals(releaseState) ? "上线" : "下线", processCode);
+        try {
+            postForm(url, request);
+            log.info("DS 工作流已{}: processCode={}", "ONLINE".equals(releaseState) ? "上线" : "下线", processCode);
+        } catch (RuntimeException e) {
+            if (isNotFound(e)) {
+                log.warn("DS 工作流已不存在，忽略上线/下线: processCode={}", processCode);
+                return;
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * 检查工作流定义是否存在
+     */
+    public boolean processExists(Long processCode) {
+        try {
+            String url = buildUrl(String.format("/projects/%d/process-definition/%d",
+                    props.getProjectCode(), processCode));
+            get(url);
+            return true;
+        } catch (RuntimeException e) {
+            if (isNotFound(e)) {
+                return false;
+            }
+            log.warn("DS 查询工作流存在性失败: processCode={}", processCode, e);
+            return false;
+        }
     }
 
     /**
@@ -195,8 +221,16 @@ public class DolphinSchedulerClient {
     public void deleteProcess(Long processCode) {
         String url = buildUrl(String.format("/projects/%d/process-definition/%d",
                 props.getProjectCode(), processCode));
-        delete(url);
-        log.info("DS 工作流已删除: processCode={}", processCode);
+        try {
+            delete(url);
+            log.info("DS 工作流已删除: processCode={}", processCode);
+        } catch (RuntimeException e) {
+            if (isNotFound(e)) {
+                log.warn("DS 工作流已不存在，忽略删除: processCode={}", processCode);
+                return;
+            }
+            throw e;
+        }
     }
 
     // ==================== 定时调度 ====================
@@ -261,8 +295,16 @@ public class DolphinSchedulerClient {
     public void offlineSchedule(Long processCode, Integer scheduleId) {
         String url = buildUrl(String.format("/projects/%d/schedules/%d/offline",
                 props.getProjectCode(), scheduleId));
-        postForm(url, new HashMap<>());
-        log.info("DS 定时调度已下线: processCode={}, scheduleId={}", processCode, scheduleId);
+        try {
+            postForm(url, new HashMap<>());
+            log.info("DS 定时调度已下线: processCode={}, scheduleId={}", processCode, scheduleId);
+        } catch (RuntimeException e) {
+            if (isNotFound(e)) {
+                log.warn("DS 定时调度已不存在，忽略下线: processCode={}, scheduleId={}", processCode, scheduleId);
+                return;
+            }
+            throw e;
+        }
     }
 
     // ==================== 实例管理 ====================
@@ -743,6 +785,11 @@ public class DolphinSchedulerClient {
         } catch (IOException e) {
             throw new RuntimeException("DS API 请求异常: " + request.url(), e);
         }
+    }
+
+    private boolean isNotFound(RuntimeException e) {
+        String msg = e.getMessage();
+        return msg != null && (msg.contains("404") || msg.contains("不存在") || msg.contains("not found") || msg.contains("NOT_FOUND"));
     }
 
     // ==================== 响应解析 ====================

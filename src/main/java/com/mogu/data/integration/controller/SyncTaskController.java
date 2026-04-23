@@ -60,6 +60,7 @@ public class SyncTaskController {
         task.setSyncType(request.getSyncType());
         task.setTimeField(request.getTimeField());
         task.setCronExpression(request.getCronExpression());
+        task.setWorkflowId(request.getWorkflowId());
         syncTaskService.createTask(task);
         return Result.success();
     }
@@ -75,16 +76,8 @@ public class SyncTaskController {
         task.setSyncType(request.getSyncType());
         task.setTimeField(request.getTimeField());
         task.setCronExpression(request.getCronExpression());
-        task.setStatus(request.getStatus());
+        task.setWorkflowId(request.getWorkflowId());
         syncTaskService.updateTask(task);
-        // 重新调度
-        SyncTask updated = syncTaskService.getById(id);
-        if (updated.getStatus() != null && updated.getStatus() == 1
-                && updated.getCronExpression() != null && !updated.getCronExpression().isEmpty()) {
-            schedulerManager.rescheduleSyncTask(updated);
-        } else {
-            schedulerManager.cancelSyncTask(updated.getId());
-        }
         return Result.success();
     }
 
@@ -117,7 +110,7 @@ public class SyncTaskController {
         if (task == null || task.getStatus() == null || task.getStatus() != 1) {
             return Result.error("任务已停用，无法执行");
         }
-        syncEngineService.execute(id);
+        syncEngineService.execute(id, null);
         return Result.success();
     }
 
@@ -143,6 +136,7 @@ public class SyncTaskController {
         private String syncType;
         private String timeField;
         private String cronExpression;
+        private Long workflowId;
     }
 
     @Data
@@ -154,7 +148,7 @@ public class SyncTaskController {
         private String syncType;
         private String timeField;
         private String cronExpression;
-        private Integer status;
+        private Long workflowId;
     }
 
 }

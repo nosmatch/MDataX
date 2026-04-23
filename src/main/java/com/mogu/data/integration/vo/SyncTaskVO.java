@@ -33,6 +33,10 @@ public class SyncTaskVO {
 
     private Integer status;
 
+    private Long workflowId;
+
+    private String workflowName;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime lastSyncTime;
 

@@ -175,11 +175,15 @@
           v-for="node in dagNodes"
           :key="node.id"
           class="dag-node"
-          :class="{ 'node-active': node.status === 1 }"
+          :class="{ 'node-active': node.status === 1, 'node-sync': node.type === 'SYNC' }"
           :style="{ left: node.x + 'px', top: node.y + 'px', width: node.width + 'px', height: node.height + 'px' }"
         >
           <div class="node-title">{{ node.name }}</div>
-          <div class="node-code">{{ node.dsTaskCode || '-' }}</div>
+          <div class="node-type">
+            <el-tag size="small" :type="node.type === 'SYNC' ? 'primary' : 'success'">
+              {{ node.type === 'SYNC' ? '同步' : 'SQL' }}
+            </el-tag>
+          </div>
         </div>
       </div>
       <template #footer>
@@ -751,6 +755,9 @@ onMounted(() => {
 .dag-node.node-active {
   border-color: #67c23a;
 }
+.dag-node.node-sync {
+  border-color: #409eff;
+}
 .node-title {
   font-weight: 600;
   color: #303133;
@@ -759,9 +766,7 @@ onMounted(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.node-code {
-  font-size: 11px;
-  color: #909399;
-  margin-top: 2px;
+.node-type {
+  margin-top: 4px;
 }
 </style>

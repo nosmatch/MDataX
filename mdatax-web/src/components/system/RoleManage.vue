@@ -72,6 +72,7 @@ const page = ref(1)
 const size = ref(10)
 const total = ref(0)
 const keyword = ref('')
+const isAdmin = ref(false)
 
 const dialogVisible = ref(false)
 const isEdit = ref(false)
@@ -88,6 +89,15 @@ const form = reactive({
 const rules = {
   roleName: [{ required: true, message: '请输入角色名称', trigger: 'blur' }],
   roleCode: [{ required: true, message: '请输入角色编码', trigger: 'blur' }]
+}
+
+const loadCurrentUser = async () => {
+  try {
+    const res = await request.get('/user/current')
+    isAdmin.value = res.data.isAdmin || false
+  } catch (e) {
+    // ignore
+  }
 }
 
 const loadData = async () => {
@@ -111,6 +121,10 @@ const handleSearch = () => {
 }
 
 const handleAdd = () => {
+  if (!isAdmin.value) {
+    ElMessage.error('无权限，仅管理员可操作')
+    return
+  }
   isEdit.value = false
   Object.assign(form, { id: null, roleName: '', roleCode: '', description: '', status: 1 })
   dialogVisible.value = true
@@ -162,6 +176,7 @@ const handleDelete = async (row) => {
 }
 
 loadData()
+loadCurrentUser()
 </script>
 
 <style scoped>

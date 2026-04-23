@@ -46,17 +46,19 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
     @Override
     public void scheduleSyncTask(SyncTask task) {
         doSchedule(task.getId(), task.getTaskName(), "SYNC",
-                task.getCronExpression(), task.getDsProcessCode(), task.getDsScheduleId(),
+                task.getCronExpression(), task.getDsProcessCode(), task.getDsScheduleId(), task.getDsTaskCode(),
                 (code) -> task.setDsProcessCode(code),
-                (id) -> task.setDsScheduleId(id));
+                (id) -> task.setDsScheduleId(id),
+                (code) -> task.setDsTaskCode(code));
     }
 
     @Override
     public void scheduleSqlTask(SqlTask task) {
         doSchedule(task.getId(), task.getTaskName(), "SQL",
-                task.getCronExpression(), task.getDsProcessCode(), task.getDsScheduleId(),
+                task.getCronExpression(), task.getDsProcessCode(), task.getDsScheduleId(), task.getDsTaskCode(),
                 (code) -> task.setDsProcessCode(code),
-                (id) -> task.setDsScheduleId(id));
+                (id) -> task.setDsScheduleId(id),
+                (code) -> task.setDsTaskCode(code));
     }
 
     @Override
@@ -112,8 +114,19 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
         try {
             DagData dagData = buildDagData(workflow.getId());
             String processName = "WORKFLOW-" + workflow.getWorkflowName();
-            Long processCode = dsClient.createOrUpdateDagProcess(
-                    workflow.getDsProcessCode(), processName,
+
+            // 当 DS 重置后，旧 processCode 可能已不存在，需要检查
+            Long processCode = workflow.getDsProcessCode();
+            boolean needRecreate = false;
+            if (processCode != null && !dsClient.processExists(processCode)) {
+                log.warn("DS Workflow 已不存在，将重新创建: workflowId={}, oldProcessCode={}",
+                        workflow.getId(), processCode);
+                processCode = null;
+                needRecreate = true;
+            }
+
+            processCode = dsClient.createOrUpdateDagProcess(
+                    processCode, processName,
                     dagData.getNodes(), dagData.getRelations());
             workflow.setDsProcessCode(processCode);
             log.info("DS Workflow 工作流创建/更新成功: workflowId={}, processCode={}",
@@ -126,7 +139,7 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
             String cron = workflow.getCronExpression();
             if (cron != null && !cron.isEmpty()) {
                 Integer scheduleId;
-                if (workflow.getDsScheduleId() == null) {
+                if (workflow.getDsScheduleId() == null || needRecreate) {
                     scheduleId = dsClient.createSchedule(processCode, cron);
                     workflow.setDsScheduleId(scheduleId);
                     log.info("DS Workflow 定时调度创建成功: workflowId={}, scheduleId={}",
@@ -200,42 +213,53 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
     }
 
     private DagData buildDagData(Long workflowId) {
-        List<SqlTask> tasks = sqlTaskMapper.selectList(
+        // 1. 加载工作流内的 SQL 任务和同步任务
+        List<SqlTask> sqlTasks = sqlTaskMapper.selectList(
                 new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SqlTask>()
                         .eq(SqlTask::getWorkflowId, workflowId)
                         .eq(SqlTask::getDeleted, 0));
+        List<SyncTask> syncTasks = syncTaskMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SyncTask>()
+                        .eq(SyncTask::getWorkflowId, workflowId)
+                        .eq(SyncTask::getDeleted, 0));
 
         List<SqlTaskDependency> deps = sqlTaskDependencyMapper.selectByWorkflowId(workflowId);
 
-        Map<Long, Long> taskIdToCode = new HashMap<>();
+        // 使用复合键避免 SQL 和 SYNC 任务 id 冲突
+        Map<String, Long> taskKeyToCode = new HashMap<>();
         List<DagNode> nodes = new ArrayList<>();
 
-        for (SqlTask task : tasks) {
-            // 确保每个任务有稳定的 DS taskCode
+        // 2. 处理 SQL 任务
+        for (SqlTask task : sqlTasks) {
             if (task.getDsTaskCode() == null) {
                 task.setDsTaskCode(dsClient.generateTaskCode());
                 sqlTaskMapper.updateById(task);
             }
             long taskCode = task.getDsTaskCode();
-            taskIdToCode.put(task.getId(), taskCode);
-
-            String script = dsClient.getClass().getDeclaredMethods().length > 0
-                    ? buildCallbackScript("SQL", task.getId())
-                    : "";
-            // 直接用反射调用私有方法构建脚本比较麻烦，这里复制 buildCallbackScript 逻辑
-            String rawScript = String.format(
-                    "curl -s -X POST %s/api/internal/task/execute " +
-                            "-H \"Content-Type: application/json\" " +
-                            "-d \"{\\\"taskType\\\":\\\"SQL\\\",\\\"taskId\\\":%d,\\\"secret\\\":\\\"%s\\\"}\" " +
-                            "--max-time 7200",
-                    props.getCallbackUrl(), task.getId(), props.getCallbackSecret());
-            nodes.add(new DagNode(taskCode, task.getTaskName(), rawScript));
+            taskKeyToCode.put(task.getId() + "#SQL", taskCode);
+            nodes.add(new DagNode(taskCode, task.getTaskName(),
+                    buildCallbackScript("SQL", task.getId())));
         }
 
+        // 3. 处理同步任务
+        for (SyncTask task : syncTasks) {
+            if (task.getDsTaskCode() == null) {
+                task.setDsTaskCode(dsClient.generateTaskCode());
+                syncTaskMapper.updateById(task);
+            }
+            long taskCode = task.getDsTaskCode();
+            taskKeyToCode.put(task.getId() + "#SYNC", taskCode);
+            nodes.add(new DagNode(taskCode, task.getTaskName(),
+                    buildCallbackScript("SYNC", task.getId())));
+        }
+
+        // 4. 构建依赖关系
         List<DagRelation> relations = new ArrayList<>();
         for (SqlTaskDependency dep : deps) {
-            Long preCode = taskIdToCode.get(dep.getDependTaskId());
-            Long postCode = taskIdToCode.get(dep.getTaskId());
+            String preKey = dep.getDependTaskId() + "#" + dep.getDependTaskType();
+            String postKey = dep.getTaskId() + "#" + dep.getTaskType();
+            Long preCode = taskKeyToCode.get(preKey);
+            Long postCode = taskKeyToCode.get(postKey);
             if (preCode != null && postCode != null) {
                 relations.add(new DagRelation(preCode, postCode));
             }
@@ -258,9 +282,11 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
     // ==================== 通用调度逻辑 ====================
 
     private void doSchedule(Long taskId, String taskName, String taskType,
-                            String cronExpression, Long existProcessCode, Integer existScheduleId,
+                            String cronExpression,
+                            Long existProcessCode, Integer existScheduleId, Long existTaskCode,
                             java.util.function.Consumer<Long> processCodeSetter,
-                            java.util.function.Consumer<Integer> scheduleIdSetter) {
+                            java.util.function.Consumer<Integer> scheduleIdSetter,
+                            java.util.function.Consumer<Long> taskCodeSetter) {
         if (!props.isEnabled()) {
             log.warn("DolphinScheduler 未启用，跳过调度注册: taskId={}", taskId);
             return;
@@ -269,17 +295,27 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
         String processName = taskType + "-" + taskName;
 
         try {
+            long taskCode = existTaskCode != null ? existTaskCode : dsClient.generateTaskCode();
+
+            // 当 DS 重置后，旧 processCode 可能已不存在，需要检查
+            Long processCode = existProcessCode;
+            boolean needRecreate = false;
+            if (processCode != null && !dsClient.processExists(processCode)) {
+                log.warn("DS 工作流已不存在，将重新创建: taskId={}, oldProcessCode={}", taskId, processCode);
+                processCode = null;
+                needRecreate = true;
+            }
+
             // 1. 创建或更新工作流
-            Long processCode;
-            if (existProcessCode == null) {
-                processCode = dsClient.createSingleNodeProcess(processName, taskType, taskId);
+            if (processCode == null) {
+                processCode = dsClient.createSingleNodeProcess(processName, taskType, taskId, taskCode);
                 processCodeSetter.accept(processCode);
                 log.info("DS 工作流创建成功: taskId={}, processCode={}", taskId, processCode);
             } else {
-                dsClient.updateSingleNodeProcess(existProcessCode, processName, taskType, taskId);
-                processCode = existProcessCode;
+                dsClient.updateSingleNodeProcess(processCode, processName, taskType, taskId, taskCode);
                 log.info("DS 工作流更新成功: taskId={}, processCode={}", taskId, processCode);
             }
+            taskCodeSetter.accept(taskCode);
 
             // 2. 上线工作流（创建调度前必须先上线）
             dsClient.releaseProcess(processCode, "ONLINE");
@@ -287,7 +323,7 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
             // 3. 处理定时调度
             if (cronExpression != null && !cronExpression.isEmpty()) {
                 Integer scheduleId;
-                if (existScheduleId == null) {
+                if (existScheduleId == null || needRecreate) {
                     scheduleId = dsClient.createSchedule(processCode, cronExpression);
                     scheduleIdSetter.accept(scheduleId);
                     log.info("DS 定时调度创建成功: taskId={}, scheduleId={}", taskId, scheduleId);

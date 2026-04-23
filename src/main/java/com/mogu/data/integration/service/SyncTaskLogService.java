@@ -30,9 +30,10 @@ public class SyncTaskLogService extends ServiceImpl<SyncTaskLogMapper, SyncTaskL
         return page(new Page<>(page, size), wrapper);
     }
 
-    public SyncTaskLog startLog(Long taskId) {
+    public SyncTaskLog startLog(Long taskId, Long dsInstanceId) {
         SyncTaskLog log = new SyncTaskLog();
         log.setTaskId(taskId);
+        log.setDsInstanceId(dsInstanceId);
         log.setStartTime(LocalDateTime.now());
         log.setStatus("RUNNING");
         save(log);

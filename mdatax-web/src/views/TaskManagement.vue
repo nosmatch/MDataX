@@ -166,8 +166,8 @@
           >
             <el-option
               v-for="t in workflowTasks"
-              :key="t.id"
-              :label="t.taskName"
+              :key="t.id + '-' + t.taskType"
+              :label="t.taskName + (t.taskType === 'SYNC' ? ' [同步]' : ' [SQL]')"
               :value="t.id"
             />
           </el-select>
@@ -186,12 +186,6 @@
           <div v-if="isEdit" style="color: #909399; font-size: 12px; margin-top: 4px">
             SQL 内容请到 SQL 开发页面编辑
           </div>
-        </el-form-item>
-        <el-form-item v-if="isEdit" label="状态">
-          <el-radio-group v-model="form.status">
-            <el-radio :label="1">启用</el-radio>
-            <el-radio :label="0">停用</el-radio>
-          </el-radio-group>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -312,10 +306,17 @@ const loadWorkflowTasks = async (wfId, excludeId) => {
   workflowTasks.value = []
   if (!wfId) return
   try {
-    const res = await request.get('/sql-task/page', {
-      params: { page: 1, size: 1000, keyword: '' }
-    })
-    workflowTasks.value = (res.data.records || []).filter(t => t.workflowId === wfId && t.id !== excludeId)
+    const [sqlRes, syncRes] = await Promise.all([
+      request.get('/sql-task/page', { params: { page: 1, size: 1000, keyword: '' } }),
+      request.get('/sync-task/page', { params: { page: 1, size: 1000, keyword: '' } })
+    ])
+    const sqlTasks = (sqlRes.data.records || [])
+      .filter(t => t.workflowId === wfId && t.id !== excludeId)
+      .map(t => ({ ...t, taskType: 'SQL' }))
+    const syncTasks = (syncRes.data.records || [])
+      .filter(t => t.workflowId === wfId && t.id !== excludeId)
+      .map(t => ({ ...t, taskType: 'SYNC' }))
+    workflowTasks.value = [...sqlTasks, ...syncTasks]
   } catch (error) {
     // silent
   }
@@ -365,7 +366,7 @@ const handleSave = async () => {
       dependTaskIds: form.workflowId ? (form.dependTaskIds || []) : null
     }
     if (isEdit.value) {
-      await request.put(`/sql-task/${form.id}`, { ...payload, status: form.status })
+      await request.put(`/sql-task/${form.id}`, payload)
       ElMessage.success('更新成功')
     } else {
       await request.post('/sql-task', payload)

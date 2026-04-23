@@ -160,7 +160,7 @@ const savePermissions = async () => {
     await request.post(`/role/${selectedRoleId.value}/permissions`, permissions)
     ElMessage.success('保存成功')
   } catch (e) {
-    ElMessage.error('保存失败')
+    ElMessage.error(e.message || '保存失败')
   } finally {
     saving.value = false
   }

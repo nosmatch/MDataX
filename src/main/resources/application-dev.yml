@@ -46,10 +46,10 @@ clickhouse:
 dolphinscheduler:
   enabled: true
   base-url: http://localhost:12345/dolphinscheduler
-  token: 2f49e1762a6ca12ebbc9ab0ae06aa69a
+  token: d986ef76464e0983a5d949548337dc83
   # 注意：这是项目的 code，不是 id
   # 可通过 GET /projects?pageNo=1&pageSize=10 查询真实 code
-  project-code: 21417285848320
+  project-code: 21437946442176
   tenant-code: default
   worker-group: default
   # 回调密钥，用于 DS Worker 回调 MDataX 时的身份校验

@@ -61,6 +61,7 @@ public class DatasourceController {
         ds.setDatabaseName(request.getDatabaseName());
         ds.setUsername(request.getUsername());
         ds.setPassword(request.getPassword());
+        ds.setExtraConfig(request.getExtraConfig());
         datasourceService.createDatasource(ds);
         return Result.success();
     }
@@ -76,6 +77,7 @@ public class DatasourceController {
         ds.setUsername(request.getUsername());
         ds.setPassword(request.getPassword());
         ds.setStatus(request.getStatus());
+        ds.setExtraConfig(request.getExtraConfig());
         datasourceService.updateDatasource(ds);
         return Result.success();
     }
@@ -89,15 +91,22 @@ public class DatasourceController {
     @PostMapping("/test")
     public Result<Map<String, Object>> testConnection(@RequestBody TestConnectionRequest request) {
         Datasource ds = new Datasource();
+        ds.setType(request.getType());
         ds.setHost(request.getHost());
         ds.setPort(request.getPort());
         ds.setDatabaseName(request.getDatabaseName());
         ds.setUsername(request.getUsername());
         ds.setPassword(request.getPassword());
-        boolean success = datasourceService.testConnection(ds);
+        ds.setExtraConfig(request.getExtraConfig());
         Map<String, Object> result = new HashMap<>();
-        result.put("success", success);
-        result.put("message", success ? "连接成功" : "连接失败，请检查配置");
+        try {
+            boolean success = datasourceService.testConnection(ds);
+            result.put("success", success);
+            result.put("message", success ? "连接成功" : "连接失败，请检查配置");
+        } catch (Exception e) {
+            result.put("success", false);
+            result.put("message", "连接失败: " + e.getMessage());
+        }
         return Result.success(result);
     }
 
@@ -107,16 +116,13 @@ public class DatasourceController {
         private String name;
         @NotBlank(message = "类型不能为空")
         private String type;
-        @NotBlank(message = "主机地址不能为空")
         private String host;
-        @NotNull(message = "端口不能为空")
         private Integer port;
-        @NotBlank(message = "数据库名不能为空")
         private String databaseName;
-        @NotBlank(message = "用户名不能为空")
         private String username;
-        @NotBlank(message = "密码不能为空")
         private String password;
+        /** 类型特定配置（JSON格式） */
+        private String extraConfig;
     }
 
     @Data
@@ -128,15 +134,21 @@ public class DatasourceController {
         private String username;
         private String password;
         private Integer status;
+        /** 类型特定配置（JSON格式） */
+        private String extraConfig;
     }
 
     @Data
     public static class TestConnectionRequest {
+        @NotBlank(message = "类型不能为空")
+        private String type;
         private String host;
         private Integer port;
         private String databaseName;
         private String username;
         private String password;
+        /** 类型特定配置（JSON格式） */
+        private String extraConfig;
     }
 
 }

@@ -6,11 +6,13 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.mogu.data.integration.entity.SqlTask;
 import com.mogu.data.integration.entity.SqlTaskDependency;
 import com.mogu.data.integration.entity.SqlTaskWorkflow;
-import com.mogu.data.integration.util.CronUtils;
+import com.mogu.data.integration.entity.SyncTask;
 import com.mogu.data.integration.entity.WorkflowInstance;
 import com.mogu.data.integration.mapper.SqlTaskDependencyMapper;
 import com.mogu.data.integration.mapper.SqlTaskMapper;
 import com.mogu.data.integration.mapper.SqlTaskWorkflowMapper;
+import com.mogu.data.integration.mapper.SyncTaskMapper;
+import com.mogu.data.integration.util.CronUtils;
 import com.mogu.data.integration.scheduler.TaskSchedulerManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +24,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -39,6 +42,7 @@ public class SqlTaskWorkflowService extends ServiceImpl<SqlTaskWorkflowMapper, S
 
     private final TaskSchedulerManager schedulerManager;
     private final SqlTaskMapper sqlTaskMapper;
+    private final SyncTaskMapper syncTaskMapper;
     private final SqlTaskDependencyMapper dependencyMapper;
     private final WorkflowInstanceService instanceService;
 
@@ -143,26 +147,45 @@ public class SqlTaskWorkflowService extends ServiceImpl<SqlTaskWorkflowMapper, S
      * 获取工作流的 DAG 数据（节点 + 边）
      */
     public Map<String, Object> getDag(Long workflowId) {
-        List<SqlTask> tasks = sqlTaskMapper.selectList(
+        List<SqlTask> sqlTasks = sqlTaskMapper.selectList(
                 new LambdaQueryWrapper<SqlTask>()
                         .eq(SqlTask::getWorkflowId, workflowId)
                         .eq(SqlTask::getDeleted, 0));
+        List<SyncTask> syncTasks = syncTaskMapper.selectList(
+                new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<SyncTask>()
+                        .eq(SyncTask::getWorkflowId, workflowId)
+                        .eq(SyncTask::getDeleted, 0));
 
         List<SqlTaskDependency> deps = dependencyMapper.selectByWorkflowId(workflowId);
 
-        List<Map<String, Object>> nodes = tasks.stream().map(t -> {
+        List<Map<String, Object>> nodes = new ArrayList<>();
+
+        for (SqlTask t : sqlTasks) {
             Map<String, Object> node = new HashMap<>();
             node.put("id", t.getId());
             node.put("name", t.getTaskName());
             node.put("dsTaskCode", t.getDsTaskCode());
             node.put("status", t.getStatus());
-            return node;
-        }).collect(Collectors.toList());
+            node.put("type", "SQL");
+            nodes.add(node);
+        }
+
+        for (SyncTask t : syncTasks) {
+            Map<String, Object> node = new HashMap<>();
+            node.put("id", t.getId());
+            node.put("name", t.getTaskName());
+            node.put("dsTaskCode", t.getDsTaskCode());
+            node.put("status", t.getStatus());
+            node.put("type", "SYNC");
+            nodes.add(node);
+        }
 
         List<Map<String, Object>> edges = deps.stream().map(d -> {
             Map<String, Object> edge = new HashMap<>();
             edge.put("from", d.getDependTaskId());
             edge.put("to", d.getTaskId());
+            edge.put("fromType", d.getDependTaskType());
+            edge.put("toType", d.getTaskType());
             return edge;
         }).collect(Collectors.toList());
 

@@ -105,6 +105,11 @@
                 </el-tag>
               </template>
             </el-table-column>
+            <el-table-column prop="workflowName" label="所属工作流" min-width="140">
+              <template #default="{ row }">
+                {{ row.workflowName || '-' }}
+              </template>
+            </el-table-column>
             <el-table-column prop="status" label="状态" width="90" align="center">
               <template #default="{ row }">
                 <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
@@ -169,24 +174,31 @@
           <el-input v-model="dsForm.name" placeholder="请输入数据源名称" />
         </el-form-item>
         <el-form-item label="类型" prop="type">
-          <el-select v-model="dsForm.type" placeholder="请选择类型" style="width: 100%">
+          <el-select v-model="dsForm.type" placeholder="请选择类型" style="width: 100%" @change="onDsTypeChange">
             <el-option label="MySQL" value="MySQL" />
+            <el-option label="ClickHouse" value="ClickHouse" />
+            <el-option label="Elasticsearch" value="Elasticsearch" />
+            <el-option label="Kafka" value="Kafka" />
+            <el-option label="本地Excel" value="本地Excel" />
           </el-select>
         </el-form-item>
-        <el-form-item label="主机地址" prop="host">
+        <el-form-item v-if="dsForm.type !== '本地Excel'" label="主机地址" prop="host">
           <el-input v-model="dsForm.host" placeholder="例如: 127.0.0.1" />
         </el-form-item>
-        <el-form-item label="端口" prop="port">
+        <el-form-item v-if="dsForm.type !== '本地Excel'" label="端口" prop="port">
           <el-input-number v-model="dsForm.port" :min="1" :max="65535" style="width: 100%" />
         </el-form-item>
-        <el-form-item label="数据库名" prop="databaseName">
+        <el-form-item v-if="dsForm.type === 'MySQL' || dsForm.type === 'ClickHouse'" label="数据库名" prop="databaseName">
           <el-input v-model="dsForm.databaseName" placeholder="请输入数据库名" />
         </el-form-item>
-        <el-form-item label="用户名" prop="username">
-          <el-input v-model="dsForm.username" placeholder="请输入用户名" />
+        <el-form-item v-if="dsForm.type === 'MySQL' || dsForm.type === 'ClickHouse' || dsForm.type === 'Elasticsearch'" label="用户名" prop="username">
+          <el-input v-model="dsForm.username" placeholder="请输入用户名（可选）" />
         </el-form-item>
-        <el-form-item label="密码" prop="password">
-          <el-input v-model="dsForm.password" type="password" show-password placeholder="请输入密码" />
+        <el-form-item v-if="dsForm.type === 'MySQL' || dsForm.type === 'ClickHouse' || dsForm.type === 'Elasticsearch'" label="密码" prop="password">
+          <el-input v-model="dsForm.password" type="password" show-password placeholder="请输入密码（可选）" />
+        </el-form-item>
+        <el-form-item v-if="dsForm.type === '本地Excel'" label="文件路径" prop="extraConfig">
+          <el-input v-model="dsForm.extraConfig" placeholder="例如: /data/file.xlsx" />
         </el-form-item>
         <el-form-item v-if="isDsEdit" label="状态">
           <el-radio-group v-model="dsForm.status">
@@ -300,14 +312,23 @@
         >
           <el-input v-model="taskForm.timeField" placeholder="用于增量判断的时间字段名" />
         </el-form-item>
-        <el-form-item label="Cron表达式" prop="cronExpression">
-          <CronPicker v-model="taskForm.cronExpression" />
+        <el-form-item label="所属工作流">
+          <el-select
+            v-model="taskForm.workflowId"
+            placeholder="请选择工作流（可选）"
+            clearable
+            style="width: 100%"
+          >
+            <el-option
+              v-for="wf in allWorkflows"
+              :key="wf.id"
+              :label="wf.workflowName"
+              :value="wf.id"
+            />
+          </el-select>
         </el-form-item>
-        <el-form-item v-if="isTaskEdit" label="状态">
-          <el-radio-group v-model="taskForm.status">
-            <el-radio :label="1">启用</el-radio>
-            <el-radio :label="0">停用</el-radio>
-          </el-radio-group>
+        <el-form-item v-if="!taskForm.workflowId" label="Cron表达式" prop="cronExpression">
+          <CronPicker v-model="taskForm.cronExpression" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -321,7 +342,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import request from '../utils/request.js'
@@ -354,18 +375,37 @@ const dsForm = reactive({
   databaseName: '',
   username: '',
   password: '',
+  extraConfig: '',
   status: 1
 })
 
-const dsRules = {
-  name: [{ required: true, message: '请输入数据源名称', trigger: 'blur' }],
-  type: [{ required: true, message: '请选择类型', trigger: 'change' }],
-  host: [{ required: true, message: '请输入主机地址', trigger: 'blur' }],
-  port: [{ required: true, message: '请输入端口', trigger: 'blur' }],
-  databaseName: [{ required: true, message: '请输入数据库名', trigger: 'blur' }],
-  username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
-  password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+const dsDefaultPorts = {
+  MySQL: 3306,
+  ClickHouse: 8123,
+  Elasticsearch: 9200,
+  Kafka: 9092,
+  本地Excel: null
 }
+
+const dsRules = computed(() => {
+  const rules = {
+    name: [{ required: true, message: '请输入数据源名称', trigger: 'blur' }],
+    type: [{ required: true, message: '请选择类型', trigger: 'change' }]
+  }
+  if (dsForm.type !== '本地Excel') {
+    rules.host = [{ required: true, message: '请输入主机地址', trigger: 'blur' }]
+    rules.port = [{ required: true, message: '请输入端口', trigger: 'blur' }]
+  }
+  if (dsForm.type === 'MySQL' || dsForm.type === 'ClickHouse') {
+    rules.databaseName = [{ required: true, message: '请输入数据库名', trigger: 'blur' }]
+    rules.username = [{ required: true, message: '请输入用户名', trigger: 'blur' }]
+    rules.password = [{ required: true, message: '请输入密码', trigger: 'blur' }]
+  }
+  if (dsForm.type === '本地Excel') {
+    rules.extraConfig = [{ required: true, message: '请输入文件路径配置', trigger: 'blur' }]
+  }
+  return rules
+})
 
 const resetDsForm = () => {
   dsForm.id = null
@@ -376,7 +416,20 @@ const resetDsForm = () => {
   dsForm.databaseName = ''
   dsForm.username = ''
   dsForm.password = ''
+  dsForm.extraConfig = ''
   dsForm.status = 1
+}
+
+const onDsTypeChange = (val) => {
+  dsForm.port = dsDefaultPorts[val] || null
+  dsForm.host = ''
+  dsForm.databaseName = ''
+  dsForm.username = ''
+  dsForm.password = ''
+  dsForm.extraConfig = ''
+  if (dsFormRef.value) {
+    dsFormRef.value.clearValidate()
+  }
 }
 
 const fetchDatasources = async () => {
@@ -427,8 +480,10 @@ const doTestConnection = async (payload) => {
 
 const handleDsTest = async (row) => {
   await doTestConnection({
+    type: row.type,
     host: row.host, port: row.port, databaseName: row.databaseName,
-    username: row.username, password: row.password
+    username: row.username, password: row.password,
+    extraConfig: row.extraConfig
   })
 }
 
@@ -436,8 +491,10 @@ const handleDsTestBeforeSave = async () => {
   const valid = await dsFormRef.value.validate().catch(() => false)
   if (!valid) return
   await doTestConnection({
+    type: dsForm.type,
     host: dsForm.host, port: dsForm.port, databaseName: dsForm.databaseName,
-    username: dsForm.username, password: dsForm.password
+    username: dsForm.username, password: dsForm.password,
+    extraConfig: dsForm.extraConfig
   })
 }
 
@@ -450,13 +507,15 @@ const handleDsSave = async () => {
       await request.put(`/datasource/${dsForm.id}`, {
         name: dsForm.name, host: dsForm.host, port: dsForm.port,
         databaseName: dsForm.databaseName, username: dsForm.username,
-        password: dsForm.password, status: dsForm.status
+        password: dsForm.password, status: dsForm.status,
+        extraConfig: dsForm.extraConfig
       })
       ElMessage.success('更新成功')
     } else {
       await request.post('/datasource', {
         name: dsForm.name, type: dsForm.type, host: dsForm.host, port: dsForm.port,
-        databaseName: dsForm.databaseName, username: dsForm.username, password: dsForm.password
+        databaseName: dsForm.databaseName, username: dsForm.username,
+        password: dsForm.password, extraConfig: dsForm.extraConfig
       })
       ElMessage.success('创建成功')
     }
@@ -496,6 +555,7 @@ const isTaskEdit = ref(false)
 const taskSaving = ref(false)
 const taskFormRef = ref(null)
 const allDatasources = ref([])
+const allWorkflows = ref([])
 const tableOptions = ref([])
 const tableOptionsLoading = ref(false)
 
@@ -510,7 +570,8 @@ const taskForm = reactive({
   syncType: 'FULL',
   timeField: '',
   cronExpression: '',
-  status: 0
+  status: 0,
+  workflowId: null
 })
 
 const logDialogVisible = ref(false)
@@ -548,7 +609,25 @@ const resetTaskForm = () => {
   taskForm.timeField = ''
   taskForm.cronExpression = ''
   taskForm.status = 0
+  taskForm.workflowId = null
   tableOptions.value = []
+}
+
+const loadWorkflows = async () => {
+  try {
+    const res = await request.get('/sql-task-workflow/page', {
+      params: { page: 1, size: 1000 }
+    })
+    allWorkflows.value = res.data.records || []
+  } catch (error) {
+    // silent
+  }
+}
+
+const getWorkflowName = (wfId) => {
+  if (!wfId) return ''
+  const wf = allWorkflows.value.find(w => w.id === wfId)
+  return wf ? wf.workflowName : ''
 }
 
 const fetchTasks = async () => {
@@ -594,6 +673,7 @@ const openTaskDialog = async () => {
   isTaskEdit.value = false
   resetTaskForm()
   await loadAllDatasources()
+  await loadWorkflows()
   taskDialogVisible.value = true
 }
 
@@ -601,6 +681,7 @@ const handleTaskEdit = async (row) => {
   isTaskEdit.value = true
   resetTaskForm()
   await loadAllDatasources()
+  await loadWorkflows()
   Object.assign(taskForm, row)
   if (taskForm.datasourceId) {
     await onDatasourceChange(taskForm.datasourceId)
@@ -620,10 +701,11 @@ const handleTaskSave = async () => {
       targetTable: taskForm.targetTable,
       syncType: taskForm.syncType,
       timeField: taskForm.syncType === 'INCREMENTAL' ? taskForm.timeField : null,
-      cronExpression: taskForm.cronExpression || null
+      cronExpression: taskForm.workflowId ? null : (taskForm.cronExpression || null),
+      workflowId: taskForm.workflowId || null
     }
     if (isTaskEdit.value) {
-      await request.put(`/sync-task/${taskForm.id}`, { ...payload, status: taskForm.status })
+      await request.put(`/sync-task/${taskForm.id}`, payload)
       ElMessage.success('更新成功')
     } else {
       await request.post('/sync-task', payload)

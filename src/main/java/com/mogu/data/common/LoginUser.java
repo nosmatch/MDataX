@@ -9,6 +9,7 @@ public class LoginUser {
 
     private Long userId;
     private String username;
+    private boolean admin;
 
     private static final ThreadLocal<LoginUser> CURRENT_USER = new ThreadLocal<>();
 
@@ -28,6 +29,14 @@ public class LoginUser {
         this.username = username;
     }
 
+    public boolean isAdmin() {
+        return admin;
+    }
+
+    public void setAdmin(boolean admin) {
+        this.admin = admin;
+    }
+
     public static void set(LoginUser user) {
         CURRENT_USER.set(user);
     }
@@ -44,6 +53,11 @@ public class LoginUser {
     public static String currentUsername() {
         LoginUser user = CURRENT_USER.get();
         return user != null ? user.getUsername() : null;
+    }
+
+    public static boolean isCurrentAdmin() {
+        LoginUser user = CURRENT_USER.get();
+        return user != null && user.isAdmin();
     }
 
     public static void remove() {

@@ -105,7 +105,7 @@ public class SyncTaskSchedulerManager implements TaskSchedulerManager {
     private void executeTask(Long taskId) {
         log.info("定时触发同步任务: taskId={}", taskId);
         try {
-            syncEngineService.execute(taskId);
+            syncEngineService.execute(taskId, null);
         } catch (Exception e) {
             log.error("定时同步任务执行失败: taskId={}", taskId, e);
         }

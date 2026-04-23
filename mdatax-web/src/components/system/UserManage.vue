@@ -81,7 +81,7 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue'
+import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import request from '../../utils/request.js'
 
@@ -91,6 +91,7 @@ const page = ref(1)
 const size = ref(10)
 const total = ref(0)
 const keyword = ref('')
+const isAdmin = ref(false)
 
 const dialogVisible = ref(false)
 const isEdit = ref(false)
@@ -115,6 +116,17 @@ const roleSubmitting = ref(false)
 const allRoles = ref([])
 const selectedRoles = ref([])
 const currentUserId = ref(null)
+const loginUserId = ref(null)
+
+const loadCurrentUser = async () => {
+  try {
+    const res = await request.get('/user/current')
+    isAdmin.value = res.data.isAdmin || false
+    loginUserId.value = res.data.id || null
+  } catch (e) {
+    // ignore
+  }
+}
 
 const loadData = async () => {
   loading.value = true
@@ -137,12 +149,20 @@ const handleSearch = () => {
 }
 
 const handleAdd = () => {
+  if (!isAdmin.value) {
+    ElMessage.error('无权限，仅管理员可操作')
+    return
+  }
   isEdit.value = false
   Object.assign(form, { id: null, username: '', password: '', nickname: '', email: '', status: 1 })
   dialogVisible.value = true
 }
 
 const handleEdit = (row) => {
+  if (!isAdmin.value && row.id !== loginUserId.value) {
+    ElMessage.error('无权限，只能修改自己的信息')
+    return
+  }
   isEdit.value = true
   Object.assign(form, {
     id: row.id,
@@ -176,6 +196,10 @@ const handleSubmit = async () => {
 }
 
 const handleDelete = async (row) => {
+  if (!isAdmin.value) {
+    ElMessage.error('无权限，仅管理员可操作')
+    return
+  }
   try {
     await ElMessageBox.confirm('确认删除该用户？', '提示', { type: 'warning' })
     await request.delete(`/user/${row.id}`)
@@ -210,13 +234,14 @@ const submitAssignRoles = async () => {
     ElMessage.success('分配成功')
     roleDialogVisible.value = false
   } catch (e) {
-    ElMessage.error('分配失败')
+    ElMessage.error(e.message || '分配失败')
   } finally {
     roleSubmitting.value = false
   }
 }
 
 loadData()
+loadCurrentUser()
 </script>
 
 <style scoped>

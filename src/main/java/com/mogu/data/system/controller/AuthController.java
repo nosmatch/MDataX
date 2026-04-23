@@ -47,6 +47,7 @@ public class AuthController {
         result.put("userId", user.getId());
         result.put("username", user.getUsername());
         result.put("nickname", user.getNickname());
+        result.put("isAdmin", userService.isAdmin(user.getId()));
 
         return Result.success(result);
     }

@@ -7,9 +7,11 @@ import com.mogu.data.integration.dto.InternalExecuteRequest;
 import com.mogu.data.integration.engine.TaskEngine;
 import com.mogu.data.integration.entity.SqlTask;
 import com.mogu.data.integration.entity.SqlTaskWorkflow;
+import com.mogu.data.integration.entity.SyncTask;
 import com.mogu.data.integration.entity.WorkflowInstance;
 import com.mogu.data.integration.mapper.SqlTaskMapper;
 import com.mogu.data.integration.mapper.SqlTaskWorkflowMapper;
+import com.mogu.data.integration.mapper.SyncTaskMapper;
 import com.mogu.data.integration.service.WorkflowInstanceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -35,6 +37,7 @@ public class InternalTaskController {
     private final DolphinSchedulerProperties props;
     private final TaskEngine taskEngine;
     private final SqlTaskMapper sqlTaskMapper;
+    private final SyncTaskMapper syncTaskMapper;
     private final SqlTaskWorkflowMapper sqlTaskWorkflowMapper;
     private final WorkflowInstanceService workflowInstanceService;
     private final DolphinSchedulerClient dsClient;
@@ -87,15 +90,30 @@ public class InternalTaskController {
         if (taskId == null) {
             return null;
         }
-        SqlTask task = sqlTaskMapper.selectById(taskId);
-        if (task == null || task.getWorkflowId() == null) {
+        Long workflowId = resolveWorkflowIdByTaskId(taskId);
+        if (workflowId == null) {
             return null;
         }
-        WorkflowInstance running = workflowInstanceService.getLatestRunningByWorkflowId(task.getWorkflowId());
+        WorkflowInstance running = workflowInstanceService.getLatestRunningByWorkflowId(workflowId);
         if (running != null) {
             log.info("通过 workflow 反推 instanceId: taskId={}, workflowId={}, dsInstanceId={}",
-                    taskId, task.getWorkflowId(), running.getDsInstanceId());
+                    taskId, workflowId, running.getDsInstanceId());
             return running.getDsInstanceId();
+        }
+        return null;
+    }
+
+    /**
+     * 通过 taskId 反推所属 workflowId（同时支持 SQL 和 SYNC 任务）
+     */
+    private Long resolveWorkflowIdByTaskId(Long taskId) {
+        SqlTask sqlTask = sqlTaskMapper.selectById(taskId);
+        if (sqlTask != null && sqlTask.getWorkflowId() != null) {
+            return sqlTask.getWorkflowId();
+        }
+        SyncTask syncTask = syncTaskMapper.selectById(taskId);
+        if (syncTask != null && syncTask.getWorkflowId() != null) {
+            return syncTask.getWorkflowId();
         }
         return null;
     }
@@ -105,11 +123,11 @@ public class InternalTaskController {
             return;
         }
         try {
-            SqlTask task = sqlTaskMapper.selectById(taskId);
-            if (task == null || task.getWorkflowId() == null) {
+            Long workflowId = resolveWorkflowIdByTaskId(taskId);
+            if (workflowId == null) {
                 return;
             }
-            workflowInstanceService.recordOrFindScheduled(task.getWorkflowId(), dsInstanceId);
+            workflowInstanceService.recordOrFindScheduled(workflowId, dsInstanceId);
         } catch (Exception e) {
             log.warn("记录工作流实例失败: taskId={}, dsInstanceId={}", taskId, dsInstanceId, e);
         }

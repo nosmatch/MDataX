@@ -82,18 +82,7 @@ public class SqlTaskController {
         task.setSqlContent(request.getSqlContent());
         task.setDescription(request.getDescription());
         task.setCronExpression(request.getCronExpression());
-        task.setStatus(request.getStatus());
         sqlTaskService.updateTask(task, request.getDependTaskIds());
-        // 重新调度（仅独立任务）
-        SqlTask updated = sqlTaskService.getById(id);
-        if (updated.getWorkflowId() == null) {
-            if (updated.getStatus() != null && updated.getStatus() == 1
-                    && updated.getCronExpression() != null && !updated.getCronExpression().isEmpty()) {
-                schedulerManager.rescheduleSqlTask(updated);
-            } else {
-                schedulerManager.cancelSqlTask(updated.getId());
-            }
-        }
         return Result.success();
     }
 
@@ -209,7 +198,6 @@ public class SqlTaskController {
         private String sqlContent;
         private String description;
         private String cronExpression;
-        private Integer status;
         private Long workflowId;
         private List<Long> dependTaskIds;
     }

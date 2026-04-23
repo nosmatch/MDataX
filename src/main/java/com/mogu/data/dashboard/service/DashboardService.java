@@ -1,10 +1,14 @@
 package com.mogu.data.dashboard.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.mogu.data.integration.entity.SqlTask;
 import com.mogu.data.integration.entity.SqlTaskLog;
+import com.mogu.data.integration.entity.SyncTask;
 import com.mogu.data.integration.entity.SyncTaskLog;
 import com.mogu.data.integration.mapper.SqlTaskLogMapper;
+import com.mogu.data.integration.mapper.SqlTaskMapper;
 import com.mogu.data.integration.mapper.SyncTaskLogMapper;
+import com.mogu.data.integration.mapper.SyncTaskMapper;
 import com.mogu.data.metadata.entity.MetadataTable;
 import com.mogu.data.metadata.entity.UserTableVisit;
 import com.mogu.data.metadata.mapper.MetadataTableMapper;
@@ -33,6 +37,8 @@ public class DashboardService {
     private final MetadataTableMapper metadataTableMapper;
     private final SyncTaskLogMapper syncTaskLogMapper;
     private final SqlTaskLogMapper sqlTaskLogMapper;
+    private final SyncTaskMapper syncTaskMapper;
+    private final SqlTaskMapper sqlTaskMapper;
     private final UserTableVisitService userTableVisitService;
 
     /**
@@ -84,7 +90,8 @@ public class DashboardService {
                         .last("LIMIT " + limit));
         for (SyncTaskLog log : syncLogs) {
             RecentTaskVO vo = new RecentTaskVO();
-            vo.setName("同步任务 #" + log.getTaskId());
+            String taskName = getSyncTaskName(log.getTaskId());
+            vo.setName(taskName != null ? taskName : "同步任务 #" + log.getTaskId());
             vo.setType("同步");
             vo.setStatus(log.getStatus());
             vo.setTime(log.getEndTime() != null ? log.getEndTime() : log.getStartTime());
@@ -98,7 +105,8 @@ public class DashboardService {
                         .last("LIMIT " + limit));
         for (SqlTaskLog log : sqlLogs) {
             RecentTaskVO vo = new RecentTaskVO();
-            vo.setName("SQL任务 #" + log.getTaskId());
+            String taskName = getSqlTaskName(log.getTaskId());
+            vo.setName(taskName != null ? taskName : "SQL任务 #" + log.getTaskId());
             vo.setType("SQL");
             vo.setStatus(log.getStatus());
             vo.setTime(log.getEndTime() != null ? log.getEndTime() : log.getStartTime());
@@ -115,6 +123,24 @@ public class DashboardService {
             return result.subList(0, limit);
         }
         return result;
+    }
+
+    /**
+     * 查询同步任务名称
+     */
+    private String getSyncTaskName(Long taskId) {
+        if (taskId == null) return null;
+        SyncTask task = syncTaskMapper.selectById(taskId);
+        return task != null ? task.getTaskName() : null;
+    }
+
+    /**
+     * 查询 SQL 任务名称
+     */
+    private String getSqlTaskName(Long taskId) {
+        if (taskId == null) return null;
+        SqlTask task = sqlTaskMapper.selectById(taskId);
+        return task != null ? task.getTaskName() : null;
     }
 
     /**

@@ -1,6 +1,7 @@
 package com.mogu.data.system.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.mogu.data.common.LoginUser;
 import com.mogu.data.common.Result;
 import com.mogu.data.system.entity.Role;
 import com.mogu.data.system.entity.RolePermission;
@@ -47,6 +48,7 @@ public class RoleController {
 
     @PostMapping
     public Result<Void> create(@Valid @RequestBody RoleCreateRequest request) {
+        requireAdmin();
         Role role = new Role();
         role.setRoleName(request.getRoleName());
         role.setRoleCode(request.getRoleCode());
@@ -57,6 +59,7 @@ public class RoleController {
 
     @PutMapping("/{id}")
     public Result<Void> update(@PathVariable Long id, @RequestBody RoleUpdateRequest request) {
+        requireAdmin();
         Role role = new Role();
         role.setId(id);
         role.setRoleName(request.getRoleName());
@@ -69,6 +72,7 @@ public class RoleController {
 
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
+        requireAdmin();
         roleService.deleteRole(id);
         return Result.success();
     }
@@ -80,8 +84,15 @@ public class RoleController {
 
     @PostMapping("/{id}/permissions")
     public Result<Void> assignPermissions(@PathVariable Long id, @RequestBody List<RolePermission> permissions) {
+        requireAdmin();
         roleService.assignPermissions(id, permissions);
         return Result.success();
+    }
+
+    private void requireAdmin() {
+        if (!LoginUser.isCurrentAdmin()) {
+            throw new com.mogu.data.common.BusinessException("无权限，仅管理员可操作");
+        }
     }
 
     @Data

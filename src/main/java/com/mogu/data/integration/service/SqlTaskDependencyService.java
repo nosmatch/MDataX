@@ -2,8 +2,10 @@ package com.mogu.data.integration.service;
 
 import com.mogu.data.integration.entity.SqlTask;
 import com.mogu.data.integration.entity.SqlTaskDependency;
+import com.mogu.data.integration.entity.SyncTask;
 import com.mogu.data.integration.mapper.SqlTaskDependencyMapper;
 import com.mogu.data.integration.mapper.SqlTaskMapper;
+import com.mogu.data.integration.mapper.SyncTaskMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -23,26 +25,26 @@ public class SqlTaskDependencyService {
 
     private final SqlTaskDependencyMapper dependencyMapper;
     private final SqlTaskMapper sqlTaskMapper;
+    private final SyncTaskMapper syncTaskMapper;
 
     /**
-     * 保存/更新任务的依赖关系
+     * 保存/更新任务的依赖关系（支持 SQL/SYNC 混合类型）
      *
      * @param taskId        下游任务ID
      * @param dependTaskIds 上游任务ID列表（必须在同一个Workflow内）
      */
     @Transactional
     public void saveDependencies(Long taskId, List<Long> dependTaskIds) {
-        SqlTask task = sqlTaskMapper.selectById(taskId);
-        if (task == null || task.getWorkflowId() == null) {
+        Long workflowId = resolveWorkflowId(taskId);
+        if (workflowId == null) {
             throw new IllegalArgumentException("任务不存在或不属于任何工作流");
         }
-        Long workflowId = task.getWorkflowId();
+        String taskType = resolveTaskType(taskId);
 
         // 1. 校验所有上游任务属于同一个 Workflow
         if (dependTaskIds != null && !dependTaskIds.isEmpty()) {
             for (Long dependId : dependTaskIds) {
-                SqlTask dependTask = sqlTaskMapper.selectById(dependId);
-                if (dependTask == null || !workflowId.equals(dependTask.getWorkflowId())) {
+                if (!isInWorkflow(dependId, workflowId)) {
                     throw new IllegalArgumentException("上游任务不存在或不属于同一工作流: " + dependId);
                 }
             }
@@ -54,10 +56,13 @@ public class SqlTaskDependencyService {
         dependencyMapper.deleteByTaskId(taskId);
         if (dependTaskIds != null && !dependTaskIds.isEmpty()) {
             for (Long dependId : dependTaskIds) {
+                String dependType = resolveTaskType(dependId);
                 SqlTaskDependency dep = new SqlTaskDependency();
                 dep.setWorkflowId(workflowId);
                 dep.setTaskId(taskId);
+                dep.setTaskType(taskType);
                 dep.setDependTaskId(dependId);
+                dep.setDependTaskType(dependType);
                 dependencyMapper.insert(dep);
             }
         }
@@ -78,14 +83,14 @@ public class SqlTaskDependencyService {
             throw new IllegalArgumentException("任务不能依赖自身");
         }
 
-        SqlTask task = sqlTaskMapper.selectById(taskId);
-        if (task == null || task.getWorkflowId() == null) {
+        Long workflowId = resolveWorkflowId(taskId);
+        if (workflowId == null) {
             return;
         }
 
         // 构建内存依赖图：taskId -> 其上游依赖集合
         Map<Long, Set<Long>> graph = new HashMap<>();
-        List<SqlTaskDependency> allDeps = dependencyMapper.selectByWorkflowId(task.getWorkflowId());
+        List<SqlTaskDependency> allDeps = dependencyMapper.selectByWorkflowId(workflowId);
         for (SqlTaskDependency dep : allDeps) {
             graph.computeIfAbsent(dep.getTaskId(), k -> new HashSet<>()).add(dep.getDependTaskId());
         }
@@ -171,5 +176,52 @@ public class SqlTaskDependencyService {
     @Transactional
     public void deleteByWorkflowId(Long workflowId) {
         dependencyMapper.deleteByWorkflowId(workflowId);
+    }
+
+    // ==================== 混合任务辅助方法 ====================
+
+    /**
+     * 通过任务ID反推所属 workflowId（同时支持 SQL 和 SYNC 任务）
+     */
+    private Long resolveWorkflowId(Long taskId) {
+        SqlTask sqlTask = sqlTaskMapper.selectById(taskId);
+        if (sqlTask != null && sqlTask.getWorkflowId() != null) {
+            return sqlTask.getWorkflowId();
+        }
+        SyncTask syncTask = syncTaskMapper.selectById(taskId);
+        if (syncTask != null && syncTask.getWorkflowId() != null) {
+            return syncTask.getWorkflowId();
+        }
+        return null;
+    }
+
+    /**
+     * 通过任务ID推断任务类型（SQL 或 SYNC）
+     */
+    private String resolveTaskType(Long taskId) {
+        SqlTask sqlTask = sqlTaskMapper.selectById(taskId);
+        if (sqlTask != null) {
+            return "SQL";
+        }
+        SyncTask syncTask = syncTaskMapper.selectById(taskId);
+        if (syncTask != null) {
+            return "SYNC";
+        }
+        return "SQL";
+    }
+
+    /**
+     * 判断指定任务是否属于指定工作流
+     */
+    private boolean isInWorkflow(Long taskId, Long workflowId) {
+        SqlTask sqlTask = sqlTaskMapper.selectById(taskId);
+        if (sqlTask != null && workflowId.equals(sqlTask.getWorkflowId())) {
+            return true;
+        }
+        SyncTask syncTask = syncTaskMapper.selectById(taskId);
+        if (syncTask != null && workflowId.equals(syncTask.getWorkflowId())) {
+            return true;
+        }
+        return false;
     }
 }

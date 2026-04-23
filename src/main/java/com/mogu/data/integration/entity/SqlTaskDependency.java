@@ -23,7 +23,11 @@ public class SqlTaskDependency {
 
     private Long taskId;
 
+    private String taskType;
+
     private Long dependTaskId;
+
+    private String dependTaskType;
 
     private LocalDateTime createTime;
 }

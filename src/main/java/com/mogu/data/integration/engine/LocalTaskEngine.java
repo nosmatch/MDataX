@@ -25,7 +25,7 @@ public class LocalTaskEngine implements TaskEngine {
     @Override
     public void executeSyncTask(Long taskId, Long dsInstanceId) {
         log.info("[LocalTaskEngine] 开始执行同步任务: taskId={}, dsInstanceId={}", taskId, dsInstanceId);
-        syncEngineService.execute(taskId);
+        syncEngineService.execute(taskId, dsInstanceId);
         log.info("[LocalTaskEngine] 同步任务执行完成: taskId={}", taskId);
     }
 

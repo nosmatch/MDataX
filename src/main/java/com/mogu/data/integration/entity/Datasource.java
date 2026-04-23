@@ -1,6 +1,7 @@
 package com.mogu.data.integration.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
@@ -37,6 +38,13 @@ public class Datasource {
     private String password;
 
     private Integer status;
+
+    /**
+     * 类型特定配置
+     * 例如：本地Excel的文件路径 /data/file.xlsx
+     */
+    @TableField("extra_config")
+    private String extraConfig;
 
     @TableLogic
     @JsonIgnore

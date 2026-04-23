@@ -5,6 +5,7 @@ import com.mogu.data.common.LoginUser;
 import com.mogu.data.common.ResultCode;
 import com.mogu.data.system.entity.User;
 import com.mogu.data.system.mapper.UserMapper;
+import com.mogu.data.system.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -24,6 +25,7 @@ import javax.servlet.http.HttpServletResponse;
 public class JwtInterceptor implements HandlerInterceptor {
 
     private final UserMapper userMapper;
+    private final UserService userService;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -64,6 +66,7 @@ public class JwtInterceptor implements HandlerInterceptor {
         LoginUser loginUser = new LoginUser();
         loginUser.setUserId(userId);
         loginUser.setUsername(username);
+        loginUser.setAdmin(userService.isAdmin(userId));
         LoginUser.set(loginUser);
 
         return true;
