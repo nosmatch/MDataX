@@ -10,7 +10,11 @@ import com.mogu.data.integration.mapper.DatasourceMapper;
 import com.mogu.data.integration.mapper.SqlTaskDependencyMapper;
 import com.mogu.data.integration.mapper.SyncTaskMapper;
 import com.mogu.data.integration.scheduler.TaskSchedulerManager;
+import com.mogu.data.common.LoginUser;
 import com.mogu.data.integration.vo.SyncTaskVO;
+import com.mogu.data.system.entity.User;
+import com.mogu.data.system.mapper.UserMapper;
+import com.mogu.data.system.service.TaskCollaboratorService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.OkHttpClient;
@@ -30,7 +34,9 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Properties;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
@@ -49,6 +55,8 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
     private final TaskSchedulerManager schedulerManager;
     private final SqlTaskDependencyMapper sqlTaskDependencyMapper;
     private final SqlTaskWorkflowService workflowService;
+    private final TaskCollaboratorService collaboratorService;
+    private final UserMapper userMapper;
 
     @Qualifier("clickHouseJdbcTemplate")
     private final JdbcTemplate clickHouseJdbcTemplate;
@@ -68,6 +76,8 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
             }
         }
 
+        Long currentUserId = LoginUser.currentUserId();
+
         List<SyncTaskVO> voList = new ArrayList<>();
         for (SyncTask task : taskPage.getRecords()) {
             SyncTaskVO vo = new SyncTaskVO();
@@ -85,6 +95,18 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
             vo.setLastSyncTime(task.getLastSyncTime());
             vo.setCreateTime(task.getCreateTime());
             vo.setUpdateTime(task.getUpdateTime());
+            vo.setCreateUserId(task.getCreateUserId());
+
+            // 创建人名称
+            if (task.getCreateUserId() != null) {
+                User creator = userMapper.selectById(task.getCreateUserId());
+                if (creator != null) {
+                    vo.setCreateUserName(creator.getNickname() != null ? creator.getNickname() : creator.getUsername());
+                }
+            }
+
+            // 操作权限
+            vo.setCanOperate(collaboratorService.canOperate(task.getId(), "SYNC", currentUserId, task.getCreateUserId()));
 
             Datasource ds = datasourceMapper.selectById(task.getDatasourceId());
             if (ds != null) {
@@ -107,6 +129,7 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
         if (lambdaQuery().eq(SyncTask::getTaskName, task.getTaskName()).eq(SyncTask::getDeleted, 0).count() > 0) {
             throw new IllegalArgumentException("任务名称已存在");
         }
+        task.setCreateUserId(LoginUser.currentUserId());
         if (task.getWorkflowId() != null) {
             // ========== Workflow 内任务 ==========
             task.setCronExpression(null);
@@ -129,6 +152,7 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
         if (exist == null) {
             throw new IllegalArgumentException("任务不存在");
         }
+        checkPermission(exist);
         // 不允许变更所属 Workflow
         if (task.getWorkflowId() != null && !task.getWorkflowId().equals(exist.getWorkflowId())) {
             throw new IllegalArgumentException("不允许变更任务所属工作流");
@@ -169,6 +193,7 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
         if (task == null || task.getDeleted() != null && task.getDeleted() == 1) {
             throw new IllegalArgumentException("任务不存在");
         }
+        checkPermission(task);
         int newStatus = task.getStatus() != null && task.getStatus() == 1 ? 0 : 1;
         task.setStatus(newStatus);
         updateById(task);
@@ -188,6 +213,7 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
         if (task == null || task.getDeleted() != null && task.getDeleted() == 1) {
             throw new IllegalArgumentException("任务不存在");
         }
+        checkPermission(task);
         if (task.getWorkflowId() != null) {
             // ========== Workflow 内任务 ==========
             List<Long> downstream = sqlTaskDependencyMapper.selectDownstreamTaskIds(taskId);
@@ -342,6 +368,13 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
         Datasource ds = datasourceMapper.selectById(datasourceId);
         if (ds == null || ds.getDeleted() != null && ds.getDeleted() == 1) {
             throw new IllegalArgumentException("数据源不存在");
+        }
+    }
+
+    private void checkPermission(SyncTask task) {
+        Long userId = LoginUser.currentUserId();
+        if (!collaboratorService.canOperate(task.getId(), "SYNC", userId, task.getCreateUserId())) {
+            throw new IllegalArgumentException("无权操作该任务，仅创建人、协作者或管理员可操作");
         }
     }
 

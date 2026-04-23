@@ -186,7 +186,9 @@ public class PermissionApplyService {
         LambdaQueryWrapper<PermissionApply> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(PermissionApply::getApplicantId, applicantId);
         wrapper.orderByDesc(PermissionApply::getCreateTime);
-        return applyMapper.selectPage(new Page<>(page, size), wrapper);
+        Page<PermissionApply> result = applyMapper.selectPage(new Page<>(page, size), wrapper);
+        fillOwnerName(result.getRecords());
+        return result;
     }
 
     /**
@@ -197,7 +199,9 @@ public class PermissionApplyService {
         wrapper.eq(PermissionApply::getOwnerId, ownerId);
         wrapper.eq(PermissionApply::getStatus, PermissionApplyStatus.PENDING.getCode());
         wrapper.orderByDesc(PermissionApply::getCreateTime);
-        return applyMapper.selectPage(new Page<>(page, size), wrapper);
+        Page<PermissionApply> result = applyMapper.selectPage(new Page<>(page, size), wrapper);
+        fillOwnerName(result.getRecords());
+        return result;
     }
 
     /**
@@ -208,7 +212,25 @@ public class PermissionApplyService {
         wrapper.eq(PermissionApply::getOwnerId, ownerId);
         wrapper.ne(PermissionApply::getStatus, PermissionApplyStatus.PENDING.getCode());
         wrapper.orderByDesc(PermissionApply::getCreateTime);
-        return applyMapper.selectPage(new Page<>(page, size), wrapper);
+        Page<PermissionApply> result = applyMapper.selectPage(new Page<>(page, size), wrapper);
+        fillOwnerName(result.getRecords());
+        return result;
+    }
+
+    private void fillOwnerName(List<PermissionApply> list) {
+        if (list == null || list.isEmpty()) {
+            return;
+        }
+        for (PermissionApply apply : list) {
+            if (!StringUtils.hasText(apply.getOwnerName()) && apply.getOwnerId() != null) {
+                com.mogu.data.system.entity.User owner = userMapper.selectById(apply.getOwnerId());
+                if (owner != null) {
+                    apply.setOwnerName(owner.getNickname() != null ? owner.getNickname() : owner.getUsername());
+                } else {
+                    apply.setOwnerName("未知用户");
+                }
+            }
+        }
     }
 
     /**

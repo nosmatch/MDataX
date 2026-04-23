@@ -44,14 +44,14 @@
         <el-table-column label="读权限" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.read" type="success" size="small">有</el-tag>
-            <el-tag v-else-if="row.pendingReadApply" type="info" size="small">申请中</el-tag>
+            <span v-else-if="row.pendingReadApply" class="apply-status-text">申请中</span>
             <el-button v-else link type="primary" size="small" @click="handleApply(row, 'READ')">申请</el-button>
           </template>
         </el-table-column>
         <el-table-column label="写权限" width="80" align="center">
           <template #default="{ row }">
             <el-tag v-if="row.write" type="success" size="small">有</el-tag>
-            <el-tag v-else-if="row.pendingWriteApply" type="info" size="small">申请中</el-tag>
+            <span v-else-if="row.pendingWriteApply" class="apply-status-text">申请中</span>
             <el-button v-else link type="primary" size="small" @click="handleApply(row, 'WRITE')">申请</el-button>
           </template>
         </el-table-column>
@@ -195,5 +195,9 @@ onMounted(() => {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+.apply-status-text {
+  color: #f56c6c;
+  font-size: 13px;
 }
 </style>

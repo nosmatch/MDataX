@@ -34,6 +34,7 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
     private final SqlTaskDependencyService dependencyService;
     private final SqlTaskWorkflowService workflowService;
     private final DolphinSchedulerClient dsClient;
+    private final com.mogu.data.system.service.TaskCollaboratorService collaboratorService;
 
     public Page<SqlTask> pageTasks(String keyword, long page, long size) {
         LambdaQueryWrapper<SqlTask> wrapper = new LambdaQueryWrapper<>();
@@ -42,7 +43,12 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
             wrapper.like(SqlTask::getTaskName, keyword);
         }
         wrapper.orderByDesc(SqlTask::getCreateTime);
-        return page(new Page<>(page, size), wrapper);
+        Page<SqlTask> result = page(new Page<>(page, size), wrapper);
+        Long currentUserId = com.mogu.data.common.LoginUser.currentUserId();
+        for (SqlTask task : result.getRecords()) {
+            task.setCanOperate(collaboratorService.canOperate(task.getId(), "SQL", currentUserId, task.getCreateUserId()));
+        }
+        return result;
     }
 
     /**
@@ -98,6 +104,7 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
         if (exist == null || exist.getDeleted() != null && exist.getDeleted() == 1) {
             throw new IllegalArgumentException("任务不存在");
         }
+        checkPermission(exist);
 
         // 不允许变更所属 Workflow
         if (task.getWorkflowId() != null && !task.getWorkflowId().equals(exist.getWorkflowId())) {
@@ -149,6 +156,7 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
         if (task == null || task.getDeleted() != null && task.getDeleted() == 1) {
             throw new IllegalArgumentException("任务不存在");
         }
+        checkPermission(task);
 
         if (task.getWorkflowId() != null) {
             // ========== Workflow 内任务 ==========
@@ -273,6 +281,7 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
         if (task == null || task.getDeleted() != null && task.getDeleted() == 1) {
             throw new IllegalArgumentException("任务不存在");
         }
+        checkPermission(task);
         int newStatus = task.getStatus() != null && task.getStatus() == 1 ? 0 : 1;
         task.setStatus(newStatus);
         updateById(task);
@@ -284,5 +293,12 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
             schedulerManager.cancelSqlTask(taskId);
         }
         return task;
+    }
+
+    private void checkPermission(SqlTask task) {
+        Long userId = com.mogu.data.common.LoginUser.currentUserId();
+        if (!collaboratorService.canOperate(task.getId(), "SQL", userId, task.getCreateUserId())) {
+            throw new IllegalArgumentException("无权操作该任务，仅创建人、协作者或管理员可操作");
+        }
     }
 }

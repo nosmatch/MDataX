@@ -10,7 +10,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * @author fengzhu
  */
 @SpringBootApplication
-@MapperScan({"com.mogu.data.system.mapper", "com.mogu.data.integration.mapper", "com.mogu.data.metadata.mapper", "com.mogu.data.query.mapper", "com.mogu.data.dashboard.mapper"})
+@MapperScan({"com.mogu.data.system.mapper", "com.mogu.data.integration.mapper", "com.mogu.data.metadata.mapper", "com.mogu.data.query.mapper", "com.mogu.data.dashboard.mapper", "com.mogu.data.report.mapper"})
 public class MDataXApplication {
 
     public static void main(String[] args) {

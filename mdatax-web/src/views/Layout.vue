@@ -31,10 +31,14 @@
             <el-icon><HomeFilled /></el-icon>
             <span>首页</span>
           </el-menu-item>
-          <el-menu-item index="/integration">
-            <el-icon><Connection /></el-icon>
-            <span>数据集成</span>
-          </el-menu-item>
+          <el-sub-menu index="/integration">
+            <template #title>
+              <el-icon><Connection /></el-icon>
+              <span>数据集成</span>
+            </template>
+            <el-menu-item index="/datasource">数据源管理</el-menu-item>
+            <el-menu-item index="/sync-task">同步任务</el-menu-item>
+          </el-sub-menu>
           <el-sub-menu index="/development">
             <template #title>
               <el-icon><Document /></el-icon>
@@ -48,6 +52,10 @@
           <el-menu-item index="/assets">
             <el-icon><Folder /></el-icon>
             <span>数据资产</span>
+          </el-menu-item>
+          <el-menu-item index="/report">
+            <el-icon><TrendCharts /></el-icon>
+            <span>数据报表</span>
           </el-menu-item>
           <el-sub-menu index="/permission">
             <template #title>
@@ -77,7 +85,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth.js'
-import { HomeFilled, Connection, Document, Folder, Lock, Setting, ArrowDown } from '@element-plus/icons-vue'
+import { HomeFilled, Connection, Document, Folder, Lock, Setting, ArrowDown, TrendCharts } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

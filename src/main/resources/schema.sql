@@ -251,3 +251,15 @@ CREATE TABLE IF NOT EXISTS permission_apply (
     INDEX idx_owner_status (owner_id, status),
     INDEX idx_table_status (database_name, table_name, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='表权限申请表';
+
+-- 任务协作者表
+CREATE TABLE IF NOT EXISTS task_collaborator (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT 'ID',
+    task_id BIGINT NOT NULL COMMENT '任务ID',
+    task_type VARCHAR(16) NOT NULL COMMENT '任务类型：SYNC-同步任务 SQL-SQL任务',
+    user_id BIGINT NOT NULL COMMENT '协作者用户ID',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+    UNIQUE KEY uk_task_user (task_id, task_type, user_id),
+    INDEX idx_task (task_id, task_type),
+    INDEX idx_user (user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='任务协作者表';

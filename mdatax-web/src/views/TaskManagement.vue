@@ -50,31 +50,38 @@
       <el-table-column prop="createTime" label="创建时间" min-width="160" />
       <el-table-column label="操作" width="340" fixed="right">
         <template #default="{ row }">
-          <el-button
-            type="success"
-            link
-            size="small"
-            :disabled="row.status !== 1"
-            :loading="executingId === row.id"
-            @click="handleTaskExecute(row)"
-          >
-            执行
-          </el-button>
-          <el-button type="info" link size="small" @click="openLogDialog(row)">
-            日志
-          </el-button>
-          <el-button type="success" link size="small" @click="loadTaskToEditor(row)">
-            编辑SQL
-          </el-button>
-          <el-button type="primary" link size="small" @click="handleToggle(row)">
-            {{ row.status === 1 ? '停用' : '启用' }}
-          </el-button>
-          <el-button type="primary" link size="small" @click="handleEdit(row)">
-            编辑
-          </el-button>
-          <el-button type="danger" link size="small" @click="handleDelete(row)">
-            删除
-          </el-button>
+          <template v-if="row.canOperate">
+            <el-button
+              type="success"
+              link
+              size="small"
+              :disabled="row.status !== 1"
+              :loading="executingId === row.id"
+              @click="handleTaskExecute(row)"
+            >
+              执行
+            </el-button>
+            <el-button type="info" link size="small" @click="openLogDialog(row)">
+              日志
+            </el-button>
+            <el-button type="success" link size="small" @click="loadTaskToEditor(row)">
+              编辑SQL
+            </el-button>
+            <el-button type="primary" link size="small" @click="handleToggle(row)">
+              {{ row.status === 1 ? '停用' : '启用' }}
+            </el-button>
+            <el-button type="primary" link size="small" @click="handleEdit(row)">
+              编辑
+            </el-button>
+            <el-button type="danger" link size="small" @click="handleDelete(row)">
+              删除
+            </el-button>
+          </template>
+          <template v-else>
+            <el-button type="info" link size="small" @click="openLogDialog(row)">
+              日志
+            </el-button>
+          </template>
         </template>
       </el-table-column>
     </el-table>
@@ -187,7 +194,44 @@
             SQL 内容请到 SQL 开发页面编辑
           </div>
         </el-form-item>
+
+        <!-- 协作者管理（仅编辑时显示，创建人或管理员可操作） -->
+        <el-form-item
+          label="协作者"
+          v-if="isEdit && (form.createUserId === currentUserId || isAdmin)"
+        >
+          <div style="display: flex; gap: 8px; margin-bottom: 8px; width: 100%">
+            <el-select
+              v-model="selectedCollaboratorId"
+              placeholder="选择用户添加协作者"
+              style="width: 0; flex: 1"
+              clearable
+              filterable
+            >
+              <el-option
+                v-for="u in allUsers"
+                :key="u.id"
+                :label="u.nickname || u.username"
+                :value="u.id"
+              />
+            </el-select>
+            <el-button type="primary" :loading="addingCollaborator" @click="handleAddCollaborator">添加</el-button>
+          </div>
+          <div>
+            <el-tag
+              v-for="c in collaborators"
+              :key="c.id"
+              closable
+              style="margin-right: 8px; margin-bottom: 8px"
+              @close="handleRemoveCollaborator(c)"
+            >
+              {{ c.userName }}
+            </el-tag>
+            <span v-if="collaborators.length === 0" style="color: #909399; font-size: 13px">暂无协作者</span>
+          </div>
+        </el-form-item>
       </el-form>
+
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="handleSave">
@@ -199,15 +243,28 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import request from '../utils/request.js'
 import CronPicker from '../components/CronPicker.vue'
 import { validateCron } from '../utils/cron.js'
+import { useAuthStore } from '../stores/auth.js'
 
 const router = useRouter()
+const authStore = useAuthStore()
+const currentUserId = computed(() => authStore.user?.userId)
+const isAdmin = ref(false)
+
+const loadCurrentUser = async () => {
+  try {
+    const res = await request.get('/user/current')
+    isAdmin.value = res.data.isAdmin || false
+  } catch (e) {
+    // ignore
+  }
+}
 
 const loading = ref(false)
 const keyword = ref('')
@@ -238,11 +295,19 @@ const form = reactive({
   cronExpression: '',
   status: 0,
   workflowId: null,
-  dependTaskIds: []
+  dependTaskIds: [],
+  createUserId: null,
+  createUserName: ''
 })
 
 const workflows = ref([])
 const workflowTasks = ref([])
+
+// 协作者管理
+const allUsers = ref([])
+const collaborators = ref([])
+const selectedCollaboratorId = ref(null)
+const addingCollaborator = ref(false)
 
 const rules = {
   taskName: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
@@ -267,7 +332,11 @@ const resetForm = () => {
   form.status = 0
   form.workflowId = null
   form.dependTaskIds = []
+  form.createUserId = null
+  form.createUserName = ''
   workflowTasks.value = []
+  collaborators.value = []
+  selectedCollaboratorId.value = null
 }
 
 const fetchTasks = async () => {
@@ -344,6 +413,9 @@ const handleEdit = async (row) => {
   if (row.workflowId) {
     await loadWorkflowTasks(row.workflowId, row.id)
     await loadTaskDependencies(row.id)
+  }
+  if (row.id) {
+    await loadCollaborators(row.id, 'SQL')
   }
   dialogVisible.value = true
 }
@@ -445,9 +517,62 @@ const handleDelete = (row) => {
   }).catch(() => {})
 }
 
+// ===== 协作者管理 =====
+const loadAllUsers = async () => {
+  try {
+    const res = await request.get('/user/page', { params: { page: 1, size: 1000 } })
+    allUsers.value = (res.data.records || []).filter(u => u.id !== currentUserId.value)
+  } catch (error) {
+    // silent
+  }
+}
+
+const loadCollaborators = async (taskId, taskType) => {
+  try {
+    const res = await request.get(`/task-collaborator/${taskId}/${taskType}`)
+    collaborators.value = res.data || []
+  } catch (error) {
+    collaborators.value = []
+  }
+}
+
+const handleAddCollaborator = async () => {
+  if (!selectedCollaboratorId.value) {
+    ElMessage.warning('请选择用户')
+    return
+  }
+  addingCollaborator.value = true
+  try {
+    await request.post('/task-collaborator', {
+      taskId: form.id,
+      taskType: 'SQL',
+      userId: selectedCollaboratorId.value
+    })
+    ElMessage.success('添加成功')
+    selectedCollaboratorId.value = null
+    await loadCollaborators(form.id, 'SQL')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '添加失败')
+  } finally {
+    addingCollaborator.value = false
+  }
+}
+
+const handleRemoveCollaborator = async (c) => {
+  try {
+    await request.delete(`/task-collaborator/${c.id}`)
+    ElMessage.success('移除成功')
+    await loadCollaborators(form.id, 'SQL')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '移除失败')
+  }
+}
+
 onMounted(() => {
   fetchTasks()
   loadWorkflows()
+  loadAllUsers()
+  loadCurrentUser()
 })
 </script>
 

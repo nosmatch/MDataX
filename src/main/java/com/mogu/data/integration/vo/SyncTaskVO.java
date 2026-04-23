@@ -37,6 +37,12 @@ public class SyncTaskVO {
 
     private String workflowName;
 
+    private Long createUserId;
+
+    private String createUserName;
+
+    private Boolean canOperate;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime lastSyncTime;
 

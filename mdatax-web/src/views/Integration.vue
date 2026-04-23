@@ -4,11 +4,9 @@
       <h2>数据集成</h2>
     </div>
 
-    <el-tabs v-model="activeTab" type="border-card">
-      <!-- 数据源管理 -->
-      <el-tab-pane label="数据源管理" name="datasource">
-        <div class="tab-content">
-          <div class="tab-toolbar">
+    <!-- 数据源管理 -->
+    <div v-if="route.path === '/datasource' || route.path === '/integration'" class="tab-content">
+      <div class="tab-toolbar">
             <el-input
               v-model="dsKeyword"
               placeholder="搜索数据源名称"
@@ -69,11 +67,9 @@
             />
           </div>
         </div>
-      </el-tab-pane>
 
-      <!-- 同步任务 -->
-      <el-tab-pane label="同步任务" name="task">
-        <div class="tab-content">
+        <!-- 同步任务 -->
+        <div v-if="route.path === '/sync-task'" class="tab-content">
           <div class="tab-toolbar">
             <el-input
               v-model="taskKeyword"
@@ -119,30 +115,37 @@
             </el-table-column>
             <el-table-column prop="lastSyncTime" label="最后同步" min-width="160" />
             <el-table-column prop="createTime" label="创建时间" min-width="160" />
-            <el-table-column label="操作" width="300" fixed="right">
+            <el-table-column label="操作" width="340" fixed="right">
               <template #default="{ row }">
-                <el-button
-                  type="success"
-                  link
-                  size="small"
-                  :disabled="row.status !== 1"
-                  :loading="executingId === row.id"
-                  @click="handleTaskExecute(row)"
-                >
-                  执行同步
-                </el-button>
-                <el-button type="info" link size="small" @click="openLogDialog(row)">
-                  日志
-                </el-button>
-                <el-button type="primary" link size="small" @click="handleTaskToggle(row)">
-                  {{ row.status === 1 ? '停用' : '启用' }}
-                </el-button>
-                <el-button type="primary" link size="small" @click="handleTaskEdit(row)">
-                  编辑
-                </el-button>
-                <el-button type="danger" link size="small" @click="handleTaskDelete(row)">
-                  删除
-                </el-button>
+                <template v-if="row.canOperate">
+                  <el-button
+                    type="success"
+                    link
+                    size="small"
+                    :disabled="row.status !== 1"
+                    :loading="executingId === row.id"
+                    @click="handleTaskExecute(row)"
+                  >
+                    执行同步
+                  </el-button>
+                  <el-button type="info" link size="small" @click="openLogDialog(row)">
+                    日志
+                  </el-button>
+                  <el-button type="primary" link size="small" @click="handleTaskToggle(row)">
+                    {{ row.status === 1 ? '停用' : '启用' }}
+                  </el-button>
+                  <el-button type="primary" link size="small" @click="handleTaskEdit(row)">
+                    编辑
+                  </el-button>
+                  <el-button type="danger" link size="small" @click="handleTaskDelete(row)">
+                    删除
+                  </el-button>
+                </template>
+                <template v-else>
+                  <el-button type="info" link size="small" @click="openLogDialog(row)">
+                    日志
+                  </el-button>
+                </template>
               </template>
             </el-table-column>
           </el-table>
@@ -159,8 +162,6 @@
             />
           </div>
         </div>
-      </el-tab-pane>
-    </el-tabs>
 
     <!-- 数据源对话框 -->
     <el-dialog
@@ -330,7 +331,45 @@
         <el-form-item v-if="!taskForm.workflowId" label="Cron表达式" prop="cronExpression">
           <CronPicker v-model="taskForm.cronExpression" />
         </el-form-item>
+
+        <!-- 协作者管理（仅编辑时显示，创建人或管理员可操作） -->
+        <el-form-item
+          label="协作者"
+          v-if="isTaskEdit && (taskForm.createUserId === currentUserId || isAdmin)"
+        >
+          <div style="display: flex; gap: 8px; margin-bottom: 8px; width: 100%">
+            <el-select
+              v-model="selectedCollaboratorId"
+              placeholder="选择用户添加协作者"
+              style="width: 0; flex: 1"
+              clearable
+              filterable
+            >
+              <el-option
+                v-for="u in allUsers"
+                :key="u.id"
+                :label="u.nickname || u.username"
+                :value="u.id"
+              />
+            </el-select>
+            <el-button type="primary" :loading="addingCollaborator" @click="handleAddCollaborator"
+            >添加</el-button>
+          </div>
+          <div>
+            <el-tag
+              v-for="c in collaborators"
+              :key="c.id"
+              closable
+              style="margin-right: 8px; margin-bottom: 8px"
+              @close="handleRemoveCollaborator(c)"
+            >
+              {{ c.userName }}
+            </el-tag>
+            <span v-if="collaborators.length === 0" style="color: #909399; font-size: 13px">暂无协作者</span>
+          </div>
+        </el-form-item>
       </el-form>
+
       <template #footer>
         <el-button @click="taskDialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="taskSaving" @click="handleTaskSave">
@@ -342,15 +381,29 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import request from '../utils/request.js'
 import CronPicker from '../components/CronPicker.vue'
 import { validateCron } from '../utils/cron.js'
+import { useAuthStore } from '../stores/auth.js'
+import { useRoute, useRouter } from 'vue-router'
 
-// ===== Tab =====
-const activeTab = ref('datasource')
+const authStore = useAuthStore()
+const currentUserId = computed(() => authStore.user?.userId)
+const isAdmin = ref(false)
+const route = useRoute()
+const router = useRouter()
+
+const loadCurrentUser = async () => {
+  try {
+    const res = await request.get('/user/current')
+    isAdmin.value = res.data.isAdmin || false
+  } catch (e) {
+    // ignore
+  }
+}
 
 // ===== 数据源 =====
 const dsLoading = ref(false)
@@ -571,8 +624,16 @@ const taskForm = reactive({
   timeField: '',
   cronExpression: '',
   status: 0,
-  workflowId: null
+  workflowId: null,
+  createUserId: null,
+  createUserName: ''
 })
+
+// 协作者管理
+const allUsers = ref([])
+const collaborators = ref([])
+const selectedCollaboratorId = ref(null)
+const addingCollaborator = ref(false)
 
 const logDialogVisible = ref(false)
 const logLoading = ref(false)
@@ -610,7 +671,11 @@ const resetTaskForm = () => {
   taskForm.cronExpression = ''
   taskForm.status = 0
   taskForm.workflowId = null
+  taskForm.createUserId = null
+  taskForm.createUserName = ''
   tableOptions.value = []
+  collaborators.value = []
+  selectedCollaboratorId.value = null
 }
 
 const loadWorkflows = async () => {
@@ -685,6 +750,9 @@ const handleTaskEdit = async (row) => {
   Object.assign(taskForm, row)
   if (taskForm.datasourceId) {
     await onDatasourceChange(taskForm.datasourceId)
+  }
+  if (row.id) {
+    await loadCollaborators(row.id, 'SYNC')
   }
   taskDialogVisible.value = true
 }
@@ -761,6 +829,57 @@ const handleTaskExecute = async (row) => {
   }
 }
 
+// ===== 协作者管理 =====
+const loadAllUsers = async () => {
+  try {
+    const res = await request.get('/user/page', { params: { page: 1, size: 1000 } })
+    allUsers.value = (res.data.records || []).filter(u => u.id !== currentUserId.value)
+  } catch (error) {
+    // silent
+  }
+}
+
+const loadCollaborators = async (taskId, taskType) => {
+  try {
+    const res = await request.get(`/task-collaborator/${taskId}/${taskType}`)
+    collaborators.value = res.data || []
+  } catch (error) {
+    collaborators.value = []
+  }
+}
+
+const handleAddCollaborator = async () => {
+  if (!selectedCollaboratorId.value) {
+    ElMessage.warning('请选择用户')
+    return
+  }
+  addingCollaborator.value = true
+  try {
+    await request.post('/task-collaborator', {
+      taskId: taskForm.id,
+      taskType: 'SYNC',
+      userId: selectedCollaboratorId.value
+    })
+    ElMessage.success('添加成功')
+    selectedCollaboratorId.value = null
+    await loadCollaborators(taskForm.id, 'SYNC')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '添加失败')
+  } finally {
+    addingCollaborator.value = false
+  }
+}
+
+const handleRemoveCollaborator = async (c) => {
+  try {
+    await request.delete(`/task-collaborator/${c.id}`)
+    ElMessage.success('移除成功')
+    await loadCollaborators(taskForm.id, 'SYNC')
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '移除失败')
+  }
+}
+
 const openLogDialog = (row) => {
   currentLogTaskId.value = row.id
   logPage.value = 1
@@ -787,6 +906,8 @@ const fetchLogs = async () => {
 onMounted(() => {
   fetchDatasources()
   fetchTasks()
+  loadAllUsers()
+  loadCurrentUser()
 })
 </script>
 

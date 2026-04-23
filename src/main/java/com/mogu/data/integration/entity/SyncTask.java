@@ -50,6 +50,8 @@ public class SyncTask {
 
     private Integer retryInterval;
 
+    private Long createUserId;
+
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime lastSyncTime;
 

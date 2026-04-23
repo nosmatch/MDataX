@@ -46,6 +46,9 @@ public class SqlTask {
 
     private Integer retryInterval;
 
+    @com.baomidou.mybatisplus.annotation.TableField(exist = false)
+    private Boolean canOperate;
+
     @TableLogic
     @JsonIgnore
     private Integer deleted;
