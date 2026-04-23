@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS sys_role (
     role_name VARCHAR(64) NOT NULL UNIQUE COMMENT '角色名称',
     role_code VARCHAR(64) NOT NULL UNIQUE COMMENT '角色编码',
     description VARCHAR(255) DEFAULT NULL COMMENT '描述',
+    role_type TINYINT DEFAULT 1 COMMENT '角色类型：1-普通角色 2-个人角色',
     status TINYINT DEFAULT 1 COMMENT '状态：0-禁用 1-启用',
     deleted TINYINT DEFAULT 0 COMMENT '删除标记',
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
@@ -227,3 +228,26 @@ CREATE TABLE IF NOT EXISTS table_access_history (
     INDEX idx_user_id (user_id),
     INDEX idx_access_time (access_time)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='表访问历史记录';
+
+-- 权限申请表
+CREATE TABLE IF NOT EXISTS permission_apply (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY COMMENT '申请ID',
+    applicant_id BIGINT NOT NULL COMMENT '申请人用户ID',
+    applicant_name VARCHAR(64) DEFAULT NULL COMMENT '申请人用户名',
+    table_id BIGINT DEFAULT NULL COMMENT '目标表ID',
+    database_name VARCHAR(64) NOT NULL COMMENT '目标库名',
+    table_name VARCHAR(128) NOT NULL COMMENT '目标表名',
+    table_comment VARCHAR(255) DEFAULT NULL COMMENT '表注释',
+    apply_type VARCHAR(16) NOT NULL COMMENT '申请权限类型：READ-读 WRITE-写',
+    apply_reason VARCHAR(500) DEFAULT NULL COMMENT '申请理由',
+    status TINYINT NOT NULL DEFAULT 0 COMMENT '状态：0-待审批 1-已通过 2-已拒绝',
+    owner_id BIGINT NOT NULL COMMENT '责任人ID（审批人）',
+    owner_name VARCHAR(64) DEFAULT NULL COMMENT '责任人用户名',
+    approve_time DATETIME DEFAULT NULL COMMENT '审批时间',
+    approve_comment VARCHAR(500) DEFAULT NULL COMMENT '审批意见',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '申请时间',
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+    INDEX idx_applicant_status (applicant_id, status),
+    INDEX idx_owner_status (owner_id, status),
+    INDEX idx_table_status (database_name, table_name, status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='表权限申请表';

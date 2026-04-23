@@ -41,18 +41,18 @@
         <el-table-column prop="tableComment" label="描述" min-width="180" show-overflow-tooltip />
         <el-table-column prop="ownerName" label="责任人" min-width="100" />
         <el-table-column prop="lastDataUpdateTime" label="最近更新时间" min-width="160" />
-        <el-table-column label="读权限" width="90" align="center">
+        <el-table-column label="读权限" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.read ? 'success' : 'danger'" size="small">
-              {{ row.read ? '有' : '无' }}
-            </el-tag>
+            <el-tag v-if="row.read" type="success" size="small">有</el-tag>
+            <el-tag v-else-if="row.pendingReadApply" type="info" size="small">申请中</el-tag>
+            <el-button v-else link type="primary" size="small" @click="handleApply(row, 'READ')">申请</el-button>
           </template>
         </el-table-column>
-        <el-table-column label="写权限" width="90" align="center">
+        <el-table-column label="写权限" width="80" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.write ? 'success' : 'danger'" size="small">
-              {{ row.write ? '有' : '无' }}
-            </el-tag>
+            <el-tag v-if="row.write" type="success" size="small">有</el-tag>
+            <el-tag v-else-if="row.pendingWriteApply" type="info" size="small">申请中</el-tag>
+            <el-button v-else link type="primary" size="small" @click="handleApply(row, 'WRITE')">申请</el-button>
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" min-width="160" />
@@ -70,6 +70,8 @@
         />
       </div>
     </el-card>
+
+    <ApplyDialog ref="applyDialogRef" @success="onApplySuccess" />
   </div>
 </template>
 
@@ -79,6 +81,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Refresh, Search } from '@element-plus/icons-vue'
 import request from '../utils/request.js'
+import ApplyDialog from '../components/ApplyDialog.vue'
 
 const router = useRouter()
 
@@ -89,6 +92,7 @@ const tableList = ref([])
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
+const applyDialogRef = ref(null)
 
 const fetchData = async () => {
   loading.value = true
@@ -140,6 +144,23 @@ const handleCollect = async () => {
 
 const goDetail = (id) => {
   router.push(`/assets/detail/${id}`)
+}
+
+const handleApply = (row, applyType) => {
+  if (applyDialogRef.value) {
+    applyDialogRef.value.open(row.databaseName, row.tableName, applyType)
+  }
+}
+
+const onApplySuccess = (databaseName, tableName, applyType) => {
+  const row = tableList.value.find(r => r.databaseName === databaseName && r.tableName === tableName)
+  if (row) {
+    if (applyType === 'READ') {
+      row.pendingReadApply = true
+    } else if (applyType === 'WRITE') {
+      row.pendingWriteApply = true
+    }
+  }
 }
 
 const formatNumber = (num) => {

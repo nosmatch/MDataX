@@ -14,6 +14,7 @@ import com.mogu.data.metadata.vo.TableDetailVO;
 import com.mogu.data.metadata.vo.TablePageVO;
 import com.mogu.data.query.service.QueryService;
 import com.mogu.data.query.vo.QueryResultVO;
+import com.mogu.data.system.service.PermissionApplyService;
 import com.mogu.data.system.service.PermissionService;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
@@ -22,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 
 import javax.servlet.http.HttpServletRequest;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -40,6 +42,7 @@ public class MetadataTableController {
     private final MetadataTableMapper tableMapper;
     private final MetadataTableService tableService;
     private final PermissionService permissionService;
+    private final PermissionApplyService permissionApplyService;
     private final QueryService queryService;
     private final com.mogu.data.metadata.service.UserTableVisitService userTableVisitService;
     private final TableAccessHistoryService tableAccessHistoryService;
@@ -95,13 +98,27 @@ public class MetadataTableController {
         if (userId == null) {
             log.warn("数据目录分页查询 - userId 为 null，权限将全部为 false");
         }
+
+        // 批量查询待审批申请
+        List<String> tableNames = result.getRecords().stream()
+                .map(vo -> vo.getDatabaseName() + "." + vo.getTableName())
+                .collect(Collectors.toList());
+        Map<String, List<String>> pendingMap = permissionApplyService.getPendingApplyMap(userId, tableNames);
+
         for (TablePageVO vo : result.getRecords()) {
             String fullName = vo.getDatabaseName() + "." + vo.getTableName();
             boolean read = permissionService.hasReadPermission(userId, fullName);
             boolean write = permissionService.hasWritePermission(userId, fullName);
             vo.setRead(read);
             vo.setWrite(write);
-            log.debug("表 {} - read={}, write={}", fullName, read, write);
+
+            List<String> pendingTypes = pendingMap.get(fullName);
+            if (pendingTypes != null) {
+                vo.setPendingReadApply(pendingTypes.contains("READ"));
+                vo.setPendingWriteApply(pendingTypes.contains("WRITE"));
+            }
+            log.debug("表 {} - read={}, write={}, pendingRead={}, pendingWrite={}",
+                    fullName, read, write, vo.isPendingReadApply(), vo.isPendingWriteApply());
         }
         return Result.success(result);
     }

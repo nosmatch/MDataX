@@ -49,10 +49,15 @@
             <el-icon><Folder /></el-icon>
             <span>数据资产</span>
           </el-menu-item>
-          <el-menu-item index="/permission">
-            <el-icon><Lock /></el-icon>
-            <span>权限管理</span>
-          </el-menu-item>
+          <el-sub-menu index="/permission">
+            <template #title>
+              <el-icon><Lock /></el-icon>
+              <span>权限管理</span>
+            </template>
+            <el-menu-item index="/permission">权限配置</el-menu-item>
+            <el-menu-item index="/my-applies">我的申请</el-menu-item>
+            <el-menu-item index="/my-approvals">我的审批</el-menu-item>
+          </el-sub-menu>
           <el-menu-item index="/system">
             <el-icon><Setting /></el-icon>
             <span>系统管理</span>

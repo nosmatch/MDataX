@@ -54,6 +54,20 @@ public class UserService extends ServiceImpl<UserMapper, User> {
         user.setPassword(passwordEncoder.encode(user.getPassword()));
         user.setStatus(1);
         save(user);
+
+        // 自动生成个人角色并绑定
+        Role personalRole = new Role();
+        personalRole.setRoleName(user.getNickname() != null ? user.getNickname() : user.getUsername());
+        personalRole.setRoleCode("user_" + user.getId());
+        personalRole.setDescription("用户个人角色");
+        personalRole.setRoleType(2);
+        personalRole.setStatus(1);
+        roleMapper.insert(personalRole);
+
+        UserRole ur = new UserRole();
+        ur.setUserId(user.getId());
+        ur.setRoleId(personalRole.getId());
+        userRoleMapper.insert(ur);
     }
 
     @Transactional

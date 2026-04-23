@@ -45,4 +45,8 @@ public class TablePageVO {
 
     private boolean write;
 
+    private boolean pendingReadApply;
+
+    private boolean pendingWriteApply;
+
 }

@@ -21,6 +21,8 @@ const routes = [
             { path: 'assets/detail/:id', name: 'AssetsDetail', component: () => import('../views/AssetsDetail.vue') },
             { path: 'query', name: 'DataQuery', component: () => import('../views/Query.vue') },
             { path: 'permission', name: 'Permission', component: () => import('../views/Permission.vue') },
+            { path: 'my-applies', name: 'MyApplies', component: () => import('../views/MyApplies.vue') },
+            { path: 'my-approvals', name: 'MyApprovals', component: () => import('../views/MyApprovals.vue') },
             { path: 'system', name: 'System', component: () => import('../views/System.vue') },
         ]
     }

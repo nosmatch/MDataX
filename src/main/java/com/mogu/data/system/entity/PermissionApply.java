@@ -2,44 +2,54 @@ package com.mogu.data.system.entity;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
-import com.baomidou.mybatisplus.annotation.TableLogic;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.fasterxml.jackson.annotation.JsonFormat;
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 
 import java.time.LocalDateTime;
 
 /**
- * 系统角色实体
+ * 权限申请实体
  *
  * @author fengzhu
  */
 @Data
-@TableName("sys_role")
-public class Role {
+@TableName("permission_apply")
+public class PermissionApply {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private String roleName;
+    private Long applicantId;
 
-    private String roleCode;
+    private String applicantName;
 
-    private String description;
+    private Long tableId;
 
-    private Integer roleType;
+    private String databaseName;
+
+    private String tableName;
+
+    private String tableComment;
+
+    private String applyType;
+
+    private String applyReason;
 
     private Integer status;
 
-    @TableLogic
-    @JsonIgnore
-    private Integer deleted;
+    private Long ownerId;
+
+    private String ownerName;
+
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
+    private LocalDateTime approveTime;
+
+    private String approveComment;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime updateTime;
-
 }
