@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -56,14 +57,26 @@ public class ClickHouseQueryService {
 
         if (isSelect) {
             // SELECT：返回结果集
-            List<Map<String, Object>> rows = jdbcTemplate.queryForList(executableSql);
+            List<Map<String, Object>> rawRows = jdbcTemplate.queryForList(executableSql);
             long executionTime = System.currentTimeMillis() - start;
 
-            if (!rows.isEmpty()) {
-                vo.setColumns(new ArrayList<>(rows.get(0).keySet()));
-            } else {
-                vo.setColumns(Collections.emptyList());
+            // 将列名统一转为小写（ClickHouse JDBC 驱动可能返回大写列名）
+            List<Map<String, Object>> rows = new ArrayList<>();
+            List<String> columns = new ArrayList<>();
+            if (!rawRows.isEmpty()) {
+                for (String key : rawRows.get(0).keySet()) {
+                    columns.add(key.toLowerCase());
+                }
+                for (Map<String, Object> rawRow : rawRows) {
+                    Map<String, Object> row = new LinkedHashMap<>();
+                    for (Map.Entry<String, Object> entry : rawRow.entrySet()) {
+                        row.put(entry.getKey().toLowerCase(), entry.getValue());
+                    }
+                    rows.add(row);
+                }
             }
+
+            vo.setColumns(columns);
             vo.setRows(rows);
             vo.setRowCount(rows.size());
             vo.setExecutionTime(executionTime);

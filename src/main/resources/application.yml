@@ -9,6 +9,7 @@ spring:
   jackson:
     time-zone: GMT+8
     default-property-inclusion: non_null
+    property-naming-strategy: LOWER_CAMEL_CASE
     serialization:
       write-dates-as-timestamps: false
 
