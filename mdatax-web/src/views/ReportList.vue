@@ -27,11 +27,27 @@
     <el-card>
       <el-table :data="reportList" v-loading="loading" stripe>
         <el-table-column prop="name" label="报表名称" min-width="200" show-overflow-tooltip />
-        <el-table-column prop="chartType" label="图表类型" width="120">
+        <el-table-column label="图表数量" width="120" align="center">
           <template #default="{ row }">
-            <el-tag size="small" :type="chartTypeTagType(row.chartType)">
-              {{ chartTypeLabel(row.chartType) }}
+            <el-tag size="small" type="info">
+              {{ row.chartCount || 0 }} 个图表
             </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="图表类型" width="150">
+          <template #default="{ row }">
+            <div v-if="row.chartTypes && row.chartTypes.length > 0" class="chart-types">
+              <el-tag
+                v-for="type in row.chartTypes"
+                :key="type"
+                size="small"
+                :type="getChartTypeTagType(type)"
+                style="margin-right: 4px;"
+              >
+                {{ getChartTypeLabel(type) }}
+              </el-tag>
+            </div>
+            <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
@@ -86,12 +102,12 @@ const chartTypeMap = {
   table: { label: '表格', type: 'info' }
 }
 
-function chartTypeLabel(type) {
+function getChartTypeLabel(type) {
   return chartTypeMap[type]?.label || type
 }
 
-function chartTypeTagType(type) {
-  return chartTypeMap[type]?.type || ''
+function getChartTypeTagType(type) {
+  return chartTypeMap[type]?.type || 'info'
 }
 
 async function loadData() {
@@ -166,5 +182,14 @@ onMounted(loadData)
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+.chart-types {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.text-muted {
+  color: #999;
+  font-size: 13px;
 }
 </style>

@@ -8,6 +8,7 @@ import com.mogu.data.query.service.ClickHouseQueryService;
 import com.mogu.data.query.vo.ExecuteOptions;
 import com.mogu.data.query.vo.QueryResultVO;
 import com.mogu.data.report.entity.Report;
+import com.mogu.data.report.entity.ReportChart;
 import com.mogu.data.report.mapper.ReportMapper;
 import com.mogu.data.system.service.PermissionService;
 import lombok.RequiredArgsConstructor;
@@ -15,8 +16,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.HashSet;
-import java.util.Set;
+import java.util.*;
+import java.util.stream.Collectors;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,6 +33,7 @@ public class ReportService extends ServiceImpl<ReportMapper, Report> {
 
     private final ClickHouseQueryService clickHouseQueryService;
     private final PermissionService permissionService;
+    private final ReportChartService reportChartService;
 
     /**
      * 分页查询报表列表
@@ -47,23 +49,59 @@ public class ReportService extends ServiceImpl<ReportMapper, Report> {
     }
 
     /**
+     * 分页查询报表列表（带图表统计信息）
+     */
+    public Page<Map<String, Object>> pageReportsWithChartInfo(String keyword, long page, long size, Long userId) {
+        // 查询报表列表
+        Page<Report> reportPage = pageReports(keyword, page, size, userId);
+
+        // 查询每个报表的图表统计信息
+        List<Map<String, Object>> records = reportPage.getRecords().stream()
+                .map(report -> {
+                    Map<String, Object> map = new HashMap<>();
+                    map.put("id", report.getId());
+                    map.put("name", report.getName());
+                    map.put("description", report.getDescription());
+                    map.put("status", report.getStatus());
+                    map.put("createTime", report.getCreateTime());
+
+                    // 查询该报表的图表
+                    List<ReportChart> charts = reportChartService.getChartsByReportId(report.getId());
+                    map.put("chartCount", charts.size());
+
+                    // 收集图表类型
+                    Set<String> chartTypes = charts.stream()
+                            .map(ReportChart::getChartType)
+                            .filter(StringUtils::hasText)
+                            .collect(Collectors.toSet());
+                    map.put("chartTypes", new ArrayList<>(chartTypes));
+
+                    return map;
+                })
+                .collect(Collectors.toList());
+
+        // 转换为 Page<Map<String, Object>>
+        Page<Map<String, Object>> resultPage = new Page<>(reportPage.getCurrent(), reportPage.getSize(), reportPage.getTotal());
+        resultPage.setRecords(records);
+
+        return resultPage;
+    }
+
+    /**
      * 创建报表
      */
     public void createReport(Report report, Long userId) {
         if (!StringUtils.hasText(report.getName())) {
             throw new BusinessException("报表名称不能为空");
         }
-        if (!StringUtils.hasText(report.getSqlContent())) {
-            throw new BusinessException("SQL内容不能为空");
-        }
+        // 移除SQL内容验证，SQL现在在图表级别配置
         if (lambdaQuery().eq(Report::getName, report.getName()).eq(Report::getDeleted, 0).count() > 0) {
             throw new BusinessException("报表名称已存在");
         }
         report.setCreateUserId(userId);
         report.setStatus(report.getStatus() != null ? report.getStatus() : 1);
 
-        log.info("保存报表 - Name: {}, XAxisField: {}, YAxisField: {}",
-                report.getName(), report.getXAxisField(), report.getYAxisField());
+        log.info("保存报表 - Name: {}", report.getName());
 
         save(report);
 
@@ -87,8 +125,7 @@ public class ReportService extends ServiceImpl<ReportMapper, Report> {
             }
         }
 
-        log.info("更新报表 - ID: {}, XAxisField: {}, YAxisField: {}",
-                report.getId(), report.getXAxisField(), report.getYAxisField());
+        log.info("更新报表 - ID: {}, Name: {}", report.getId(), report.getName());
 
         updateById(report);
 

@@ -6,7 +6,7 @@
         <p v-if="report.description" class="desc">{{ report.description }}</p>
       </div>
       <div class="actions">
-        <el-button :loading="loading" @click="loadData">
+        <el-button :loading="loading" @click="loadAllChartsData">
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
@@ -19,39 +19,92 @@
         <el-alert :title="error" type="error" show-icon :closable="false" />
       </div>
 
-      <div v-else-if="result" class="result-area">
-        <div class="result-meta">
-          <el-tag size="small">行数: {{ result.rowCount }}</el-tag>
-          <el-tag size="small">耗时: {{ result.executionTime }}ms</el-tag>
-        </div>
+      <div v-else-if="charts.length > 0" class="result-area">
+        <!-- 网格布局展示多个图表 -->
+        <el-row :gutter="20" class="charts-grid">
+          <el-col
+            v-for="chart in charts"
+            :key="chart.id"
+            :span="(chart.layoutSpan || 12) * 2"
+            class="chart-col"
+          >
+            <el-card class="chart-card" v-loading="chart.loading">
+              <template #header>
+                <div class="chart-card-header">
+                  <div class="chart-title-section">
+                    <span class="chart-title">{{ chart.title }}</span>
+                    <el-tag size="small" :type="getChartTypeTag(chart.chartType)">
+                      {{ getChartTypeLabel(chart.chartType) }}
+                    </el-tag>
+                  </div>
+                </div>
+                <div v-if="chart.chartDescription" class="chart-description">
+                  {{ chart.chartDescription }}
+                </div>
+              </template>
+              <div
+                :ref="el => setChartRef(chart.id, el)"
+                class="chart-container"
+                :class="{ 'table-container': chart.chartType === 'table' }"
+              >
+                <!-- 图表错误提示 -->
+                <div v-if="chartErrors.has(chart.id)" class="chart-error">
+                  <el-alert
+                    :title="chartErrors.get(chart.id)"
+                    type="error"
+                    :closable="false"
+                    show-icon
+                  />
+                </div>
 
-        <!-- 图表展示 -->
-        <div v-show="report.chartType !== 'table'" class="chart-wrapper">
-          <div ref="chartRef" class="chart-container"></div>
-        </div>
+                <!-- 表格类型：显示数据表格 -->
+                <div v-if="chart.result && chart.chartType === 'table'" class="table-content">
+                  <div class="table-wrapper">
+                    <el-table
+                      :data="chart.result.rows"
+                      stripe
+                      :height="Math.min(chart.result.rowCount * 40 + 100, 500)"
+                      style="width: 100%"
+                    >
+                      <el-table-column
+                        v-for="col in chart.result.columns"
+                        :key="col"
+                        :prop="col"
+                        :label="col"
+                        min-width="120"
+                        show-overflow-tooltip
+                      />
+                    </el-table>
+                  </div>
+                </div>
 
-        <!-- 表格展示 -->
-        <div class="table-wrapper">
-          <el-table :data="result.rows" size="small" stripe max-height="500">
-            <el-table-column
-              v-for="col in result.columns"
-              :key="col"
-              :prop="col"
-              :label="col"
-              min-width="120"
-              show-overflow-tooltip
-            />
-          </el-table>
-        </div>
+                <!-- 图表类型：显示 ECharts 图表 -->
+                <div v-else-if="chart.result && chart.chartType !== 'table'" class="chart-content">
+                  <div class="chart-meta">
+                    <el-tag size="small" effect="plain">
+                      行数: {{ chart.result.rowCount }}
+                    </el-tag>
+                    <el-tag size="small" effect="plain">
+                      耗时: {{ chart.result.executionTime }}ms
+                    </el-tag>
+                  </div>
+                </div>
+              </div>
+            </el-card>
+          </el-col>
+        </el-row>
       </div>
+
+      <el-empty v-else description="暂无图表配置" />
     </el-card>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUpdated, onUnmounted, watch } from 'vue'
+import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Refresh } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import request from '../utils/request.js'
 
@@ -60,11 +113,11 @@ const router = useRouter()
 const reportId = ref(Number(route.params.id))
 
 const report = ref({})
-const result = ref(null)
+const charts = ref([])
 const loading = ref(false)
 const error = ref('')
-const chartRef = ref(null)
-let chartInstance = null
+const chartInstances = new Map()
+const chartErrors = new Map()
 
 async function loadReportInfo() {
   try {
@@ -75,14 +128,51 @@ async function loadReportInfo() {
   }
 }
 
-async function loadData() {
+async function loadCharts() {
+  try {
+    const res = await request.get(`/report/${reportId.value}/charts`)
+    charts.value = (res.data || []).map(chart => ({
+      ...chart,
+      loading: false,
+      result: null
+    }))
+  } catch (err) {
+    ElMessage.error(err.message || '加载图表配置失败')
+  }
+}
+
+async function loadAllChartsData() {
   loading.value = true
   error.value = ''
+  chartErrors.clear()
+
   try {
-    const res = await request.get(`/report/${reportId.value}/data`)
-    result.value = res.data
+    // 并行加载所有图表数据
+    const res = await request.get(`/report/${reportId.value}/charts-data`)
+    const dataMap = res.data
+
+    // 为每个图表设置数据
+    charts.value.forEach(chart => {
+      chart.result = dataMap[chart.id]
+      chart.loading = false
+
+      if (!chart.result) {
+        chartErrors.set(chart.id, `图表「${chart.title}」数据加载失败（可能缺少SQL配置）`)
+      }
+    })
+
+    // 渲染所有图表
+    nextTick(() => {
+      charts.value.forEach(chart => {
+        if (chart.result) {
+          renderChart(chart)
+        }
+      })
+    })
+
   } catch (err) {
-    error.value = err.message || '数据加载失败'
+    error.value = err.message || '加载图表数据失败'
+    ElMessage.error(error.value)
   } finally {
     loading.value = false
   }
@@ -90,13 +180,10 @@ async function loadData() {
 
 /**
  * 大小写不敏感地从对象中获取值
- * ClickHouse JDBC 驱动返回的列名通常是大写的
  */
 function getFieldValue(row, fieldName) {
   if (!fieldName) return undefined
-  // 优先精确匹配
   if (fieldName in row) return row[fieldName]
-  // 大小写不敏感匹配
   const lowerField = fieldName.toLowerCase()
   for (const key of Object.keys(row)) {
     if (key.toLowerCase() === lowerField) {
@@ -111,9 +198,7 @@ function getFieldValue(row, fieldName) {
  */
 function getActualColumnName(columns, fieldName) {
   if (!fieldName) return null
-  // 优先精确匹配
   if (columns.includes(fieldName)) return fieldName
-  // 大小写不敏感匹配
   const lowerField = fieldName.toLowerCase()
   for (const col of columns) {
     if (col.toLowerCase() === lowerField) {
@@ -123,19 +208,30 @@ function getActualColumnName(columns, fieldName) {
   return null
 }
 
-function renderChart() {
-  if (!chartRef.value || !result.value) return
+/**
+ * 渲染单个图表
+ */
+function renderChart(chart) {
+  const chartRef = chartInstances.get(chart.id)?.ref
+  if (!chartRef || !chart.result) return
 
-  const type = report.value.chartType
-  if (type === 'table') return
+  const xField = chart.xAxisField
+  const yField = chart.yAxisField
+  const columns = chart.result.columns || []
+  const rows = chart.result.rows || []
 
-  const xField = report.value.xAxisField
-  const yField = report.value.yAxisField
-  const columns = result.value.columns || []
-  const rows = result.value.rows || []
+  // 清除之前的错误
+  chartErrors.delete(chart.id)
+
+  // 表格类型不需要轴字段验证
+  if (chart.chartType === 'table') {
+    // 不需要轴字段，直接渲染表格
+    return
+  }
 
   if (!xField || !yField) {
-    console.warn('xAxisField 或 yAxisField 未配置')
+    chartErrors.set(chart.id, `图表「${chart.title}」缺少轴字段配置`)
+    console.warn(`图表 ${chart.title} 缺少轴字段配置`)
     return
   }
 
@@ -143,31 +239,58 @@ function renderChart() {
   const actualYField = getActualColumnName(columns, yField)
 
   if (!actualXField) {
-    console.warn(`找不到列: ${xField}，可用列: ${columns.join(', ')}`)
+    chartErrors.set(chart.id, `图表「${chart.title}」找不到X轴字段: ${xField}`)
+    console.warn(`图表 ${chart.title} 找不到列: ${xField}`)
     return
   }
   if (!actualYField) {
-    console.warn(`找不到列: ${yField}，可用列: ${columns.join(', ')}`)
+    chartErrors.set(chart.id, `图表「${chart.title}」找不到Y轴字段: ${yField}`)
+    console.warn(`图表 ${chart.title} 找不到列: ${yField}`)
     return
   }
 
-  if (chartInstance) {
-    chartInstance.dispose()
+  // 获取或创建图表实例
+  let instance = chartInstances.get(chart.id)?.instance
+  if (instance) {
+    instance.dispose()
   }
-
-  chartInstance = echarts.init(chartRef.value)
+  instance = echarts.init(chartRef)
+  chartInstances.set(chart.id, { ref: chartRef, instance })
 
   const xData = rows.map(r => getFieldValue(r, xField))
   const yData = rows.map(r => getFieldValue(r, yField))
 
+  // 数据验证：检查Y轴数据是否为数值
+  const hasNumericYData = yData.some(val => typeof val === 'number')
+
+  // 如果Y轴数据不是数值，可能配置反了
+  if (!hasNumericYData && chart.chartType !== 'pie') {
+    const errorMsg = `图表「${chart.title}」数据配置可能有误：Y轴字段「${yField}」的值不是数值类型。请检查是否将X轴和Y轴字段配置反了。`
+    chartErrors.set(chart.id, errorMsg)
+    console.error(errorMsg, { xField, yField, xData: xData.slice(0, 3), yData: yData.slice(0, 3) })
+    return
+  }
+
+  // 饼图特殊验证
+  if (chart.chartType === 'pie' && !hasNumericYData) {
+    const errorMsg = `图表「${chart.title}」数据配置有误：饼图需要Y轴字段为数值类型`
+    chartErrors.set(chart.id, errorMsg)
+    console.error(errorMsg, { xField, yField, xData: xData.slice(0, 3), yData: yData.slice(0, 3) })
+    return
+  }
+
   let option = {}
 
-  if (type === 'pie') {
+  if (chart.chartType === 'table') {
+    // 表格类型不需要 ECharts 配置，直接返回
+    return
+  } else if (chart.chartType === 'pie') {
     option = {
       tooltip: { trigger: 'item' },
       legend: {
         orient: 'vertical',
-        left: 'left'
+        left: 'left',
+        top: 'center'
       },
       series: [{
         type: 'pie',
@@ -190,7 +313,14 @@ function renderChart() {
             shadowColor: 'rgba(0, 0, 0, 0.5)'
           }
         }
-      }]
+      }],
+      grid: {
+        left: '5%',
+        right: '5%',
+        bottom: '5%',
+        top: '5%',
+        containLabel: true
+      }
     }
   } else {
     option = {
@@ -198,27 +328,94 @@ function renderChart() {
       xAxis: {
         type: 'category',
         data: xData,
-        axisLabel: { rotate: xData.length > 10 ? 45 : 0 }
+        name: chart.xAxisLabel || undefined,
+        nameLocation: 'middle',
+        nameGap: 35,
+        nameTextStyle: {
+          fontWeight: 'bold',
+          padding: [0, 0, 0, 0]
+        },
+        axisLabel: {
+          rotate: xData.length > 10 ? 45 : 0,
+          margin: 12
+        }
       },
-      yAxis: { type: 'value' },
+      yAxis: {
+        type: 'value',
+        name: chart.yAxisLabel || undefined,
+        nameLocation: 'middle',
+        nameGap: 55,
+        nameTextStyle: {
+          fontWeight: 'bold'
+        }
+      },
       series: [{
-        type: type,
+        type: chart.chartType,
         data: yData,
-        smooth: type === 'line',
+        smooth: chart.chartType === 'line',
         itemStyle: {
-          color: type === 'bar' ? '#409EFF' : undefined
+          color: chart.chartType === 'bar' ? '#409EFF' : undefined
         }
       }],
       grid: {
-        left: '3%',
-        right: '4%',
-        bottom: '3%',
+        left: '8%',
+        right: '5%',
+        bottom: '15%',
+        top: '10%',
         containLabel: true
       }
     }
   }
 
-  chartInstance.setOption(option)
+  try {
+    instance.setOption(option)
+    console.log(`图表「${chart.title}」渲染成功`, {
+      type: chart.chartType,
+      xField,
+      yField,
+      rows: chart.result.rowCount
+    })
+  } catch (err) {
+    const errorMsg = `图表「${chart.title}」渲染失败: ${err.message}`
+    chartErrors.set(chart.id, errorMsg)
+    console.error(errorMsg, err)
+  }
+}
+
+/**
+ * 设置图表DOM引用
+ */
+function setChartRef(chartId, el) {
+  if (el) {
+    const existing = chartInstances.get(chartId) || {}
+    chartInstances.set(chartId, { ...existing, ref: el })
+  }
+}
+
+/**
+ * 获取图表类型标签
+ */
+function getChartTypeLabel(type) {
+  const typeMap = {
+    line: '折线图',
+    bar: '柱状图',
+    pie: '饼图',
+    table: '表格'
+  }
+  return typeMap[type] || type
+}
+
+/**
+ * 获取图表类型标签颜色
+ */
+function getChartTypeTag(type) {
+  const typeMap = {
+    line: '',
+    bar: 'warning',
+    pie: 'success',
+    table: 'info'
+  }
+  return typeMap[type] || ''
 }
 
 function handleBack() {
@@ -226,36 +423,31 @@ function handleBack() {
 }
 
 function handleResize() {
-  if (chartInstance) {
-    chartInstance.resize()
-  }
+  chartInstances.forEach(({ instance }) => {
+    if (instance) {
+      instance.resize()
+    }
+  })
 }
 
-// 监听数据变化，自动渲染图表
-watch([() => report.value.chartType, () => result.value], () => {
-  if (report.value.chartType && report.value.chartType !== 'table' && result.value) {
-    renderChart()
-  }
-}, { flush: 'post' })
-
 onMounted(() => {
-  loadReportInfo().then(() => loadData())
+  loadReportInfo().then(() => {
+    loadCharts().then(() => {
+      loadAllChartsData()
+    })
+  })
   window.addEventListener('resize', handleResize)
-})
-
-onUpdated(() => {
-  // DOM 更新后尝试渲染图表
-  if (report.value.chartType && report.value.chartType !== 'table' && result.value) {
-    renderChart()
-  }
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
-  if (chartInstance) {
-    chartInstance.dispose()
-    chartInstance = null
-  }
+  chartInstances.forEach(({ instance }) => {
+    if (instance) {
+      instance.dispose()
+    }
+  })
+  chartInstances.clear()
+  chartErrors.clear()
 })
 </script>
 
@@ -284,19 +476,86 @@ onUnmounted(() => {
 .error-message {
   margin-bottom: 16px;
 }
-.result-meta {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+.charts-grid {
+  margin-top: 16px;
 }
-.chart-wrapper {
+.chart-col {
   margin-bottom: 20px;
+}
+.chart-card {
+  height: 100%;
+}
+.chart-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.chart-title-section {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.chart-title {
+  font-weight: 500;
+  font-size: 15px;
+}
+.chart-description {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #ebeef5;
+  color: #666;
+  font-size: 13px;
+  line-height: 1.5;
 }
 .chart-container {
   width: 100%;
   height: 400px;
+  position: relative;
+}
+.chart-container.table-container {
+  height: auto;
+  min-height: 300px;
 }
 .table-wrapper {
-  margin-top: 16px;
+  overflow: auto;
+}
+.table-wrapper table {
+  margin: 0;
+}
+.table-content {
+  width: 100%;
+  height: 100%;
+}
+.table-wrapper {
+  width: 100%;
+  overflow: auto;
+}
+.chart-error {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 10;
+  padding: 10px;
+}
+.chart-meta {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 8px;
+  z-index: 5;
+}
+.chart-content {
+  width: 100%;
+  height: 100%;
+}
+.chart-meta {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 8px;
+  z-index: 5;
 }
 </style>

@@ -5,9 +5,14 @@ import com.mogu.data.common.LoginUser;
 import com.mogu.data.common.Result;
 import com.mogu.data.query.vo.QueryResultVO;
 import com.mogu.data.report.entity.Report;
+import com.mogu.data.report.entity.ReportChart;
+import com.mogu.data.report.service.ReportChartService;
 import com.mogu.data.report.service.ReportService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
 
 /**
  * 报表管理控制器
@@ -20,12 +25,13 @@ import org.springframework.web.bind.annotation.*;
 public class ReportController {
 
     private final ReportService reportService;
+    private final ReportChartService reportChartService;
 
     /**
      * 分页查询报表列表
      */
     @GetMapping("/page")
-    public Result<Page<Report>> page(
+    public Result<Page<Map<String, Object>>> page(
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) String keyword) {
@@ -33,7 +39,7 @@ public class ReportController {
         if (userId == null) {
             return Result.error("用户未登录");
         }
-        return Result.success(reportService.pageReports(keyword, page, size, userId));
+        return Result.success(reportService.pageReportsWithChartInfo(keyword, page, size, userId));
     }
 
     /**
@@ -60,7 +66,7 @@ public class ReportController {
      * 创建报表
      */
     @PostMapping
-    public Result<Void> create(@RequestBody Report report) {
+    public Result<Report> create(@RequestBody Report report) {
         System.out.println("=== Create Report Debug Info ===");
         System.out.println("Name: " + report.getName());
         System.out.println("ChartType: " + report.getChartType());
@@ -74,7 +80,7 @@ public class ReportController {
             return Result.error("用户未登录");
         }
         reportService.createReport(report, userId);
-        return Result.success();
+        return Result.success(report);
     }
 
     /**
@@ -116,6 +122,81 @@ public class ReportController {
         }
         QueryResultVO result = reportService.executeReport(id, userId);
         return Result.success(result);
+    }
+
+    // ==================== 多图表相关接口 ====================
+
+    /**
+     * 查询报表的所有图表配置
+     */
+    @GetMapping("/{id}/charts")
+    public Result<List<ReportChart>> getCharts(@PathVariable Long id) {
+        List<ReportChart> charts = reportChartService.getChartsByReportId(id);
+        return Result.success(charts);
+    }
+
+    /**
+     * 创建图表配置
+     */
+    @PostMapping("/{id}/charts")
+    public Result<Void> createChart(@PathVariable Long id, @RequestBody ReportChart chart) {
+        chart.setReportId(id);
+        reportChartService.createChart(chart);
+        return Result.success();
+    }
+
+    /**
+     * 更新图表配置
+     */
+    @PutMapping("/charts/{chartId}")
+    public Result<Void> updateChart(@PathVariable Long chartId, @RequestBody ReportChart chart) {
+        chart.setId(chartId);
+        reportChartService.updateChart(chart);
+        return Result.success();
+    }
+
+    /**
+     * 删除图表配置
+     */
+    @DeleteMapping("/charts/{chartId}")
+    public Result<Void> deleteChart(@PathVariable Long chartId) {
+        reportChartService.deleteChart(chartId);
+        return Result.success();
+    }
+
+    /**
+     * 批量保存图表配置（用于报表编辑页保存）
+     */
+    @PutMapping("/{id}/charts/batch")
+    public Result<Void> batchSaveCharts(@PathVariable Long id, @RequestBody List<ReportChart> charts) {
+        reportChartService.batchSaveCharts(id, charts);
+        return Result.success();
+    }
+
+    /**
+     * 执行单个图表的SQL
+     */
+    @GetMapping("/charts/{chartId}/data")
+    public Result<QueryResultVO> executeChart(@PathVariable Long chartId) {
+        Long userId = LoginUser.currentUserId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+        QueryResultVO result = reportChartService.executeChart(chartId, userId);
+        return Result.success(result);
+    }
+
+    /**
+     * 批量执行报表的所有图表SQL
+     */
+    @GetMapping("/{id}/charts-data")
+    public Result<Map<Long, QueryResultVO>> executeAllCharts(@PathVariable Long id) {
+        Long userId = LoginUser.currentUserId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+        Map<Long, QueryResultVO> results = reportChartService.executeAllCharts(id, userId);
+        return Result.success(results);
     }
 
 }

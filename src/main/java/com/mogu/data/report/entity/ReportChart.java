@@ -13,55 +13,58 @@ import lombok.Data;
 import java.time.LocalDateTime;
 
 /**
- * 报表定义实体
- * <p>
- * 注意：为了向后兼容，保留了 chartType、xAxisField、yAxisField 字段。
- * 新版报表支持多图表，请使用 report_chart 表存储图表配置。
- * 单图表报表会自动将 report 表中的配置同步到 report_chart 表。
+ * 报表图表配置实体
  *
  * @author fengzhu
  */
 @Data
-@TableName("report")
-public class Report {
+@TableName("report_chart")
+public class ReportChart {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private String name;
+    @TableField("report_id")
+    @JsonProperty("reportId")
+    private Long reportId;
+
+    @TableField("chart_type")
+    @JsonProperty("chartType")
+    private String chartType;
+
+    private String title;
+
+    @TableField("chart_description")
+    @JsonProperty("chartDescription")
+    private String chartDescription;
 
     @TableField("sql_content")
     @JsonProperty("sqlContent")
     private String sqlContent;
 
-    /**
-     * @deprecated 单图表模式字段，保留向后兼容。多图表请使用 report_chart 表
-     */
-    @Deprecated
-    private String chartType;
-
-    /**
-     * @deprecated 单图表模式字段，保留向后兼容。多图表请使用 report_chart 表
-     */
-    @Deprecated
     @TableField("x_axis_field")
     @JsonProperty("xAxisField")
     private String xAxisField;
 
-    /**
-     * @deprecated 单图表模式字段，保留向后兼容。多图表请使用 report_chart 表
-     */
-    @Deprecated
+    @TableField("x_axis_label")
+    @JsonProperty("xAxisLabel")
+    private String xAxisLabel;
+
     @TableField("y_axis_field")
     @JsonProperty("yAxisField")
     private String yAxisField;
 
-    private String description;
+    @TableField("y_axis_label")
+    @JsonProperty("yAxisLabel")
+    private String yAxisLabel;
 
-    private Integer status;
+    @TableField("sort_order")
+    @JsonProperty("sortOrder")
+    private Integer sortOrder;
 
-    @TableField("create_user_id")
-    private Long createUserId;
+    @TableField("layout_span")
+    @JsonProperty("layoutSpan")
+    private Integer layoutSpan;
 
     @TableLogic
     @JsonIgnore
