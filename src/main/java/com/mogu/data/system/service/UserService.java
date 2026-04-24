@@ -130,4 +130,24 @@ public class UserService extends ServiceImpl<UserMapper, User> {
         return roles.stream().anyMatch(r -> "admin".equals(r.getRoleCode()));
     }
 
+    /**
+     * 搜索用户（按用户名或昵称模糊查询）
+     * 用于协作者选择等功能
+     *
+     * @param keyword 搜索关键词
+     * @return 用户列表
+     */
+    public List<User> searchUsers(String keyword) {
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(User::getDeleted, 0);
+        wrapper.eq(User::getStatus, 1); // 只查询正常状态的用户
+        if (StringUtils.hasText(keyword)) {
+            wrapper.and(w -> w.like(User::getUsername, keyword)
+                    .or()
+                    .like(User::getNickname, keyword));
+        }
+        wrapper.last("LIMIT 20"); // 限制返回20条
+        return list(wrapper);
+    }
+
 }

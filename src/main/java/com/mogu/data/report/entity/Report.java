@@ -58,6 +58,18 @@ public class Report {
 
     private String description;
 
+    /**
+     * 可见性：private-私有, public-公开
+     */
+    private String visibility;
+
+    /**
+     * 报表所有者ID
+     */
+    @TableField("owner_id")
+    @JsonProperty("ownerId")
+    private Long ownerId;
+
     private Integer status;
 
     @TableField("create_user_id")

@@ -7,12 +7,14 @@ import com.mogu.data.query.vo.QueryResultVO;
 import com.mogu.data.report.entity.Report;
 import com.mogu.data.report.entity.ReportChart;
 import com.mogu.data.report.service.ReportChartService;
+import com.mogu.data.report.service.ReportPermissionService;
 import com.mogu.data.report.service.ReportService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.stream.Collectors;
 
 /**
  * 报表管理控制器
@@ -26,6 +28,7 @@ public class ReportController {
 
     private final ReportService reportService;
     private final ReportChartService reportChartService;
+    private final ReportPermissionService permissionService;
 
     /**
      * 分页查询报表列表
@@ -39,27 +42,77 @@ public class ReportController {
         if (userId == null) {
             return Result.error("用户未登录");
         }
-        return Result.success(reportService.pageReportsWithChartInfo(keyword, page, size, userId));
+
+        // 先查询报表列表
+        Page<Map<String, Object>> resultPage = reportService.pageReportsWithChartInfo(keyword, page, size, userId);
+
+        // 为每个报表添加图表统计信息
+        for (Map<String, Object> report : resultPage.getRecords()) {
+            Long reportId = (Long) report.get("id");
+            List<ReportChart> charts = reportChartService.getChartsByReportId(reportId);
+            report.put("chartCount", charts.size());
+
+            // 收集图表类型
+            Set<String> chartTypes = charts.stream()
+                    .map(ReportChart::getChartType)
+                    .filter(StringUtils::hasText)
+                    .collect(Collectors.toSet());
+            report.put("chartTypes", new ArrayList<>(chartTypes));
+        }
+
+        return Result.success(resultPage);
     }
 
     /**
      * 根据ID查询报表
      */
     @GetMapping("/{id}")
-    public Result<Report> getById(@PathVariable Long id) {
+    public Result<Map<String, Object>> getById(@PathVariable Long id) {
+        Long userId = LoginUser.currentUserId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+
+        // 权限校验
+        permissionService.requireViewPermission(id, userId);
+
         Report report = reportService.getById(id);
         if (report == null || report.getDeleted() != null && report.getDeleted() == 1) {
             return Result.error("报表不存在");
         }
+
+        // 获取用户角色信息
+        String userRole = permissionService.getReportRole(id, userId);
+        boolean canEdit = permissionService.canEditReport(id, userId);
+        boolean canDelete = permissionService.canDeleteReport(id, userId);
+
+        // 构建返回数据
+        Map<String, Object> result = new HashMap<>();
+        result.put("id", report.getId());
+        result.put("name", report.getName());
+        result.put("description", report.getDescription());
+        result.put("sqlContent", report.getSqlContent());
+        result.put("visibility", report.getVisibility());
+        result.put("ownerId", report.getOwnerId());
+        result.put("status", report.getStatus());
+        result.put("createTime", report.getCreateTime());
+        result.put("updateTime", report.getUpdateTime());
+        result.put("userRole", userRole);
+        result.put("canEdit", canEdit);
+        result.put("canDelete", canDelete);
+
         // 调试日志：打印字段值
         System.out.println("=== Report Debug Info ===");
         System.out.println("ID: " + report.getId());
         System.out.println("Name: " + report.getName());
-        System.out.println("ChartType: " + report.getChartType());
-        System.out.println("XAxisField: " + report.getXAxisField());
-        System.out.println("YAxisField: " + report.getYAxisField());
+        System.out.println("OwnerID: " + report.getOwnerId());
+        System.out.println("Visibility: " + report.getVisibility());
+        System.out.println("CurrentUser: " + userId);
+        System.out.println("UserRole: " + userRole);
+        System.out.println("CanEdit: " + canEdit);
+        System.out.println("CanDelete: " + canDelete);
         System.out.println("========================");
-        return Result.success(report);
+        return Result.success(result);
     }
 
     /**
@@ -88,9 +141,19 @@ public class ReportController {
      */
     @PutMapping("/{id}")
     public Result<Void> update(@PathVariable Long id, @RequestBody Report report) {
+        Long userId = LoginUser.currentUserId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+
+        // 权限校验
+        permissionService.requireEditPermission(id, userId);
+
         System.out.println("=== Update Report Debug Info ===");
         System.out.println("ID: " + id);
         System.out.println("Name: " + report.getName());
+        System.out.println("OwnerID: " + report.getOwnerId());
+        System.out.println("Visibility: " + report.getVisibility());
         System.out.println("ChartType: " + report.getChartType());
         System.out.println("XAxisField: " + report.getXAxisField());
         System.out.println("YAxisField: " + report.getYAxisField());
@@ -107,6 +170,14 @@ public class ReportController {
      */
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
+        Long userId = LoginUser.currentUserId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+
+        // 权限校验
+        permissionService.requireDeletePermission(id, userId);
+
         reportService.removeById(id);
         return Result.success();
     }
@@ -120,6 +191,10 @@ public class ReportController {
         if (userId == null) {
             return Result.error("用户未登录");
         }
+
+        // 权限校验
+        permissionService.requireExecutePermission(id, userId);
+
         QueryResultVO result = reportService.executeReport(id, userId);
         return Result.success(result);
     }
@@ -131,6 +206,14 @@ public class ReportController {
      */
     @GetMapping("/{id}/charts")
     public Result<List<ReportChart>> getCharts(@PathVariable Long id) {
+        Long userId = LoginUser.currentUserId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+
+        // 权限校验
+        permissionService.requireViewPermission(id, userId);
+
         List<ReportChart> charts = reportChartService.getChartsByReportId(id);
         return Result.success(charts);
     }
@@ -140,6 +223,14 @@ public class ReportController {
      */
     @PostMapping("/{id}/charts")
     public Result<Void> createChart(@PathVariable Long id, @RequestBody ReportChart chart) {
+        Long userId = LoginUser.currentUserId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+
+        // 权限校验
+        permissionService.requireEditPermission(id, userId);
+
         chart.setReportId(id);
         reportChartService.createChart(chart);
         return Result.success();
@@ -150,6 +241,17 @@ public class ReportController {
      */
     @PutMapping("/charts/{chartId}")
     public Result<Void> updateChart(@PathVariable Long chartId, @RequestBody ReportChart chart) {
+        Long userId = LoginUser.currentUserId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+
+        // 权限校验：需要获取报表ID
+        ReportChart existingChart = reportChartService.getById(chartId);
+        if (existingChart != null) {
+            permissionService.requireEditPermission(existingChart.getReportId(), userId);
+        }
+
         chart.setId(chartId);
         reportChartService.updateChart(chart);
         return Result.success();
@@ -160,6 +262,17 @@ public class ReportController {
      */
     @DeleteMapping("/charts/{chartId}")
     public Result<Void> deleteChart(@PathVariable Long chartId) {
+        Long userId = LoginUser.currentUserId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+
+        // 权限校验：需要获取报表ID
+        ReportChart existingChart = reportChartService.getById(chartId);
+        if (existingChart != null) {
+            permissionService.requireEditPermission(existingChart.getReportId(), userId);
+        }
+
         reportChartService.deleteChart(chartId);
         return Result.success();
     }
@@ -169,6 +282,14 @@ public class ReportController {
      */
     @PutMapping("/{id}/charts/batch")
     public Result<Void> batchSaveCharts(@PathVariable Long id, @RequestBody List<ReportChart> charts) {
+        Long userId = LoginUser.currentUserId();
+        if (userId == null) {
+            return Result.error("用户未登录");
+        }
+
+        // 权限校验
+        permissionService.requireEditPermission(id, userId);
+
         reportChartService.batchSaveCharts(id, charts);
         return Result.success();
     }
@@ -182,7 +303,18 @@ public class ReportController {
         if (userId == null) {
             return Result.error("用户未登录");
         }
-        QueryResultVO result = reportChartService.executeChart(chartId, userId);
+
+        // 权限校验：需要获取报表ID
+        ReportChart chart = reportChartService.getById(chartId);
+        if (chart == null) {
+            return Result.error("图表不存在");
+        }
+        permissionService.requireExecutePermission(chart.getReportId(), userId);
+
+        // 检查是否有报表执行权限（用于决定是否跳过表权限检查）
+        boolean hasReportPermission = permissionService.canExecuteReport(chart.getReportId(), userId);
+
+        QueryResultVO result = reportChartService.executeChart(chartId, userId, hasReportPermission);
         return Result.success(result);
     }
 
@@ -195,7 +327,14 @@ public class ReportController {
         if (userId == null) {
             return Result.error("用户未登录");
         }
-        Map<Long, QueryResultVO> results = reportChartService.executeAllCharts(id, userId);
+
+        // 权限校验
+        permissionService.requireExecutePermission(id, userId);
+
+        // 检查是否有报表执行权限（用于决定是否跳过表权限检查）
+        boolean hasReportPermission = permissionService.canExecuteReport(id, userId);
+
+        Map<Long, QueryResultVO> results = reportChartService.executeAllCharts(id, userId, hasReportPermission);
         return Result.success(results);
     }
 

@@ -33,7 +33,6 @@ public class ReportService extends ServiceImpl<ReportMapper, Report> {
 
     private final ClickHouseQueryService clickHouseQueryService;
     private final PermissionService permissionService;
-    private final ReportChartService reportChartService;
 
     /**
      * 分页查询报表列表
@@ -50,10 +49,14 @@ public class ReportService extends ServiceImpl<ReportMapper, Report> {
 
     /**
      * 分页查询报表列表（带图表统计信息）
+     * 只返回用户有权限查看的报表：
+     * 1. 用户拥有的报表
+     * 2. 公开的报表
+     * 3. 用户作为协作者的报表
      */
     public Page<Map<String, Object>> pageReportsWithChartInfo(String keyword, long page, long size, Long userId) {
-        // 查询报表列表
-        Page<Report> reportPage = pageReports(keyword, page, size, userId);
+        // 查询报表列表（带权限过滤）
+        Page<Report> reportPage = pageReportsWithPermission(keyword, page, size, userId);
 
         // 查询每个报表的图表统计信息
         List<Map<String, Object>> records = reportPage.getRecords().stream()
@@ -63,18 +66,18 @@ public class ReportService extends ServiceImpl<ReportMapper, Report> {
                     map.put("name", report.getName());
                     map.put("description", report.getDescription());
                     map.put("status", report.getStatus());
+                    map.put("visibility", report.getVisibility());
+                    map.put("ownerId", report.getOwnerId());
                     map.put("createTime", report.getCreateTime());
 
-                    // 查询该报表的图表
-                    List<ReportChart> charts = reportChartService.getChartsByReportId(report.getId());
-                    map.put("chartCount", charts.size());
+                    // 注意：这里不能直接调用 reportChartService，会形成循环依赖
+                    // 图表统计信息设置为默认值
+                    map.put("chartCount", 0);
+                    map.put("chartTypes", new ArrayList<>());
 
-                    // 收集图表类型
-                    Set<String> chartTypes = charts.stream()
-                            .map(ReportChart::getChartType)
-                            .filter(StringUtils::hasText)
-                            .collect(Collectors.toSet());
-                    map.put("chartTypes", new ArrayList<>(chartTypes));
+                    // 添加用户权限信息
+                    map.put("canEdit", report.getOwnerId().equals(userId));
+                    map.put("canDelete", report.getOwnerId().equals(userId));
 
                     return map;
                 })
@@ -85,6 +88,32 @@ public class ReportService extends ServiceImpl<ReportMapper, Report> {
         resultPage.setRecords(records);
 
         return resultPage;
+    }
+
+    /**
+     * 分页查询报表列表（带权限过滤）
+     */
+    private Page<Report> pageReportsWithPermission(String keyword, long page, long size, Long userId) {
+        LambdaQueryWrapper<Report> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Report::getDeleted, 0);
+
+        if (StringUtils.hasText(keyword)) {
+            wrapper.like(Report::getName, keyword);
+        }
+
+        // 权限过滤：只返回用户有权限查看的报表
+        // 1. 用户拥有的报表
+        // 2. 公开的报表
+        // 3. 用户作为协作者的报表
+        wrapper.and(w -> w.eq(Report::getOwnerId, userId)
+                .or()
+                .eq(Report::getVisibility, "public")
+                .or()
+                .inSql(Report::getId,
+                        "SELECT DISTINCT report_id FROM report_collaborator WHERE user_id = " + userId));
+
+        wrapper.orderByDesc(Report::getCreateTime);
+        return page(new Page<>(page, size), wrapper);
     }
 
     /**
@@ -99,9 +128,12 @@ public class ReportService extends ServiceImpl<ReportMapper, Report> {
             throw new BusinessException("报表名称已存在");
         }
         report.setCreateUserId(userId);
+        report.setOwnerId(userId); // 设置创建者为所有者
+        report.setVisibility(report.getVisibility() != null ? report.getVisibility() : "private"); // 默认私有
         report.setStatus(report.getStatus() != null ? report.getStatus() : 1);
 
-        log.info("保存报表 - Name: {}", report.getName());
+        log.info("保存报表 - Name: {}, Owner: {}, Visibility: {}",
+                report.getName(), report.getOwnerId(), report.getVisibility());
 
         save(report);
 

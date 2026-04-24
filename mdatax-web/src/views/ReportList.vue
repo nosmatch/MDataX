@@ -9,19 +9,33 @@
     </div>
 
     <el-card class="search-card">
-      <el-input
-        v-model="keyword"
-        placeholder="搜索报表名称"
-        clearable
-        style="width: 300px"
-        @keyup.enter="handleSearch"
-      >
-        <template #append>
-          <el-button @click="handleSearch">
-            <el-icon><Search /></el-icon>
-          </el-button>
-        </template>
-      </el-input>
+      <div class="search-row">
+        <el-input
+          v-model="keyword"
+          placeholder="搜索报表名称"
+          clearable
+          style="width: 300px"
+          @keyup.enter="handleSearch"
+        >
+          <template #append>
+            <el-button @click="handleSearch">
+              <el-icon><Search /></el-icon>
+            </el-button>
+          </template>
+        </el-input>
+
+        <el-select
+          v-model="visibilityFilter"
+          placeholder="筛选权限"
+          style="width: 150px; margin-left: 10px"
+          @change="handleSearch"
+        >
+          <el-option label="全部" value="" />
+          <el-option label="我的报表" value="mine" />
+          <el-option label="私有报表" value="private" />
+          <el-option label="公开报表" value="public" />
+        </el-select>
+      </div>
     </el-card>
 
     <el-card>
@@ -50,6 +64,13 @@
             <span v-else class="text-muted">-</span>
           </template>
         </el-table-column>
+        <el-table-column label="权限" width="100">
+          <template #default="{ row }">
+            <el-tag :type="getVisibilityTagType(row.visibility)" size="small">
+              {{ getVisibilityLabel(row.visibility) }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column prop="status" label="状态" width="100">
           <template #default="{ row }">
             <el-tag v-if="row.status === 1" type="success" size="small">启用</el-tag>
@@ -60,8 +81,8 @@
         <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" size="small" @click="handleView(row)">查看</el-button>
-            <el-button link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
-            <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="row.canEdit" link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
+            <el-button v-if="row.canDelete" link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -91,6 +112,7 @@ const router = useRouter()
 const loading = ref(false)
 const reportList = ref([])
 const keyword = ref('')
+const visibilityFilter = ref('')
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
@@ -102,12 +124,25 @@ const chartTypeMap = {
   table: { label: '表格', type: 'info' }
 }
 
+const visibilityMap = {
+  private: { label: '私有', type: 'warning' },
+  public: { label: '公开', type: 'success' }
+}
+
 function getChartTypeLabel(type) {
   return chartTypeMap[type]?.label || type
 }
 
 function getChartTypeTagType(type) {
   return chartTypeMap[type]?.type || 'info'
+}
+
+function getVisibilityLabel(visibility) {
+  return visibilityMap[visibility]?.label || visibility || '私有'
+}
+
+function getVisibilityTagType(visibility) {
+  return visibilityMap[visibility]?.type || 'info'
 }
 
 async function loadData() {
@@ -117,7 +152,8 @@ async function loadData() {
       params: {
         page: page.value,
         size: size.value,
-        keyword: keyword.value || undefined
+        keyword: keyword.value || undefined,
+        visibility: visibilityFilter.value || undefined
       }
     })
     reportList.value = res.data.records || []
@@ -177,6 +213,10 @@ onMounted(loadData)
 }
 .search-card {
   margin-bottom: 16px;
+}
+.search-row {
+  display: flex;
+  align-items: center;
 }
 .pagination-wrapper {
   margin-top: 16px;

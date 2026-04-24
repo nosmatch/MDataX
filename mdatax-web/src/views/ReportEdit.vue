@@ -31,7 +31,109 @@
                 <el-radio :label="0">停用</el-radio>
               </el-radio-group>
             </el-form-item>
+            <el-form-item label="权限设置">
+              <el-radio-group v-model="form.visibility">
+                <el-radio label="private">私有（仅我可见）</el-radio>
+                <el-radio label="public">公开（所有人可见）</el-radio>
+              </el-radio-group>
+              <div class="form-item-tip">
+                私有报表可以添加协作者，公开报表所有人都可以查看
+              </div>
+            </el-form-item>
           </el-form>
+
+          <el-divider content-position="left">协作者管理</el-divider>
+
+          <div v-if="form.visibility === 'private'" class="collaborators-section">
+            <div class="collaborators-header">
+              <span>协作者列表</span>
+              <el-button type="primary" size="small" @click="showAddCollaboratorDialog">
+                <el-icon><Plus /></el-icon>
+                添加协作者
+              </el-button>
+            </div>
+            <el-table :data="collaborators" stripe size="small" max-height="300">
+              <el-table-column prop="userId" label="用户ID" width="100" />
+              <el-table-column prop="userName" label="用户名" min-width="120" />
+              <el-table-column label="角色" width="120">
+                <template #default="{ row }">
+                  <el-tag :type="row.role === 'editor' ? 'warning' : 'info'" size="small">
+                    {{ row.role === 'editor' ? '编辑者' : '查看者' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="操作" width="150">
+                <template #default="{ row }">
+                  <el-button
+                    v-if="row.role === 'viewer'"
+                    link
+                    type="primary"
+                    size="small"
+                    @click="updateCollaboratorRole(row, 'editor')"
+                  >
+                    设为编辑者
+                  </el-button>
+                  <el-button
+                    v-if="row.role === 'editor'"
+                    link
+                    type="primary"
+                    size="small"
+                    @click="updateCollaboratorRole(row, 'viewer')"
+                  >
+                    设为查看者
+                  </el-button>
+                  <el-button
+                    link
+                    type="danger"
+                    size="small"
+                    @click="removeCollaborator(row)"
+                  >
+                    移除
+                  </el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+            <el-empty v-if="collaborators.length === 0" description="暂无协作者" :image-size="80" />
+          </div>
+
+          <el-alert v-else type="info" :closable="false">
+            公开报表不需要添加协作者，所有用户都可以查看
+          </el-alert>
+
+    <!-- 添加协作者对话框 -->
+    <el-dialog
+      v-model="addCollaboratorDialogVisible"
+      title="添加协作者"
+      width="500px"
+    >
+      <el-form :model="collaboratorForm" label-width="100px">
+        <el-form-item label="用户">
+          <UserSelector
+            v-model="collaboratorForm.username"
+            @select="handleUserSelect"
+            ref="userSelectorRef"
+          />
+          <div class="form-item-tip">
+            提示：请输入用户名搜索并选择用户
+          </div>
+        </el-form-item>
+        <el-form-item label="角色">
+          <el-radio-group v-model="collaboratorForm.role">
+            <el-radio label="viewer">查看者</el-radio>
+            <el-radio label="editor">编辑者</el-radio>
+          </el-radio-group>
+          <div class="form-item-tip">
+            查看者：可查看和执行；编辑者：可查看、编辑和执行
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="addCollaboratorDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleAddCollaborator" :loading="addingCollaborator">
+          确定
+        </el-button>
+      </template>
+    </el-dialog>
 
           <el-divider content-position="left">图表配置</el-divider>
 
@@ -253,10 +355,11 @@
 <script setup>
 import { ref, reactive, onMounted, watch, onUnmounted, toRaw, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, VideoPlay, MagicStick } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import request from '../utils/request.js'
+import UserSelector from '../components/UserSelector.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -270,7 +373,21 @@ const reportId = ref(null)
 const form = reactive({
   name: '',
   description: '',
-  status: 1
+  status: 1,
+  visibility: 'private'
+})
+
+// 协作者列表
+const collaborators = ref([])
+
+// 添加协作者对话框
+const addCollaboratorDialogVisible = ref(false)
+const addingCollaborator = ref(false)
+const userSelectorRef = ref(null)
+const collaboratorForm = reactive({
+  username: '',
+  userId: null,
+  role: 'viewer'
 })
 
 // 图表配置列表
@@ -644,6 +761,10 @@ async function loadReport() {
     form.name = data.name || ''
     form.description = data.description || ''
     form.status = data.status ?? 1
+    form.visibility = data.visibility || 'private'
+
+    // 加载协作者列表
+    await loadCollaborators()
 
     // 加载图表配置
     const chartsRes = await request.get(`/report/${reportId.value}/charts`)
@@ -656,6 +777,19 @@ async function loadReport() {
     }
   } catch (err) {
     ElMessage.error(err.message || '加载报表失败')
+  }
+}
+
+async function loadCollaborators() {
+  if (!reportId.value) return
+  try {
+    const res = await request.get(`/report/${reportId.value}/collaborators`)
+    collaborators.value = (res.data || []).map(c => ({
+      ...c,
+      userName: c.nickname || c.username || `用户${c.userId}`
+    }))
+  } catch (err) {
+    console.error('加载协作者列表失败', err)
   }
 }
 
@@ -729,6 +863,90 @@ async function handleSave() {
 
 function handleCancel() {
   router.push('/report')
+}
+
+// 协作者管理
+function showAddCollaboratorDialog() {
+  // 重置表单
+  collaboratorForm.username = ''
+  collaboratorForm.userId = null
+  collaboratorForm.role = 'viewer'
+  if (userSelectorRef.value) {
+    userSelectorRef.value.clear()
+  }
+  // 显示对话框
+  addCollaboratorDialogVisible.value = true
+}
+
+function handleUserSelect(user) {
+  console.log('Selected user:', user)
+  collaboratorForm.userId = user.id
+}
+
+async function handleAddCollaborator() {
+  if (!collaboratorForm.username) {
+    ElMessage.warning('请选择用户')
+    return
+  }
+
+  if (!collaboratorForm.userId) {
+    ElMessage.warning('请重新选择用户')
+    return
+  }
+
+  if (!reportId.value) {
+    ElMessage.error('报表ID不存在')
+    return
+  }
+
+  // 检查是否已经添加了该用户
+  const existing = collaborators.value.find(c => c.userId === collaboratorForm.userId)
+  if (existing) {
+    ElMessage.warning('该用户已经是协作者')
+    return
+  }
+
+  addingCollaborator.value = true
+  try {
+    await request.post(`/report/${reportId.value}/collaborators/by-username`, {
+      username: collaboratorForm.username,
+      role: collaboratorForm.role
+    })
+    ElMessage.success('添加协作者成功')
+    addCollaboratorDialogVisible.value = false
+    await loadCollaborators()
+  } catch (err) {
+    ElMessage.error(err.message || '添加协作者失败')
+  } finally {
+    addingCollaborator.value = false
+  }
+}
+
+async function updateCollaboratorRole(collaborator, newRole) {
+  if (!reportId.value) return
+  try {
+    await request.put(`/report/${reportId.value}/collaborators/${collaborator.userId}/role`, newRole, {
+      headers: { 'Content-Type': 'text/plain' }
+    })
+    ElMessage.success('角色更新成功')
+    await loadCollaborators()
+  } catch (err) {
+    ElMessage.error(err.message || '角色更新失败')
+  }
+}
+
+async function removeCollaborator(collaborator) {
+  if (!reportId.value) return
+  try {
+    await ElMessageBox.confirm(`确定移除协作者「${collaborator.userName}」吗？`, '提示', { type: 'warning' })
+    await request.delete(`/report/${reportId.value}/collaborators/${collaborator.userId}`)
+    ElMessage.success('移除成功')
+    await loadCollaborators()
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '移除失败')
+    }
+  }
 }
 
 onMounted(() => {
@@ -827,5 +1045,61 @@ onUnmounted(() => {
   margin: 5px 0;
   color: #666;
   font-size: 14px;
+}
+
+.form-item-tip {
+  font-size: 12px;
+  color: #999;
+  margin-top: 4px;
+}
+
+.collaborators-section {
+  margin-bottom: 20px;
+}
+
+.collaborators-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.collaborators-header span {
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.help-card {
+  position: sticky;
+  top: 20px;
+}
+
+.help-content h4 {
+  margin: 16px 0 8px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.help-content h4:first-child {
+  margin-top: 0;
+}
+
+.help-content ul {
+  margin: 0;
+  padding-left: 20px;
+  list-style: disc;
+}
+
+.help-content li {
+  margin: 6px 0;
+  font-size: 13px;
+  color: #666;
+  line-height: 1.6;
+}
+
+.help-content strong {
+  color: #333;
+  font-weight: 500;
 }
 </style>

@@ -172,6 +172,18 @@ public class ReportChartService extends ServiceImpl<ReportChartMapper, ReportCha
      * 执行单个图表的SQL
      */
     public QueryResultVO executeChart(Long chartId, Long userId) {
+        return executeChart(chartId, userId, false);
+    }
+
+    /**
+     * 执行图表SQL（带表权限检查控制）
+     *
+     * @param chartId 图表ID
+     * @param userId 用户ID
+     * @param skipTablePermissionCheck 是否跳过表权限检查
+     * @return 查询结果
+     */
+    public QueryResultVO executeChart(Long chartId, Long userId, boolean skipTablePermissionCheck) {
         ReportChart chart = getById(chartId);
         if (chart == null || chart.getDeleted() != null && chart.getDeleted() == 1) {
             throw new BusinessException("图表不存在");
@@ -187,11 +199,13 @@ public class ReportChartService extends ServiceImpl<ReportChartMapper, ReportCha
             throw new BusinessException("图表SQL只允许 SELECT 查询语句");
         }
 
-        // 2. 解析涉及的表名并校验读权限
-        Set<String> tables = extractTableNames(sql);
-        for (String table : tables) {
-            if (!permissionService.hasReadPermission(userId, table)) {
-                throw new BusinessException("无权限查询表: " + table);
+        // 2. 解析涉及的表名并校验读权限（如果不跳过表权限检查）
+        if (!skipTablePermissionCheck) {
+            Set<String> tables = extractTableNames(sql);
+            for (String table : tables) {
+                if (!permissionService.hasReadPermission(userId, table)) {
+                    throw new BusinessException("无权限查询表: " + table);
+                }
             }
         }
 
@@ -202,7 +216,8 @@ public class ReportChartService extends ServiceImpl<ReportChartMapper, ReportCha
                 .timeoutSeconds(10)
                 .build();
 
-        log.info("执行图表SQL - ChartId: {}, Title: {}", chartId, chart.getTitle());
+        log.info("执行图表SQL - ChartId: {}, Title: {}, UserId: {}, SkipTableCheck: {}",
+                chartId, chart.getTitle(), userId, skipTablePermissionCheck);
         return clickHouseQueryService.execute(sql, options);
     }
 
@@ -210,6 +225,18 @@ public class ReportChartService extends ServiceImpl<ReportChartMapper, ReportCha
      * 并行执行报表的所有图表SQL
      */
     public Map<Long, QueryResultVO> executeAllCharts(Long reportId, Long userId) {
+        return executeAllCharts(reportId, userId, false);
+    }
+
+    /**
+     * 并行执行报表的所有图表SQL（带表权限检查控制）
+     *
+     * @param reportId 报表ID
+     * @param userId 用户ID
+     * @param skipTablePermissionCheck 是否跳过表权限检查
+     * @return 图表执行结果
+     */
+    public Map<Long, QueryResultVO> executeAllCharts(Long reportId, Long userId, boolean skipTablePermissionCheck) {
         List<ReportChart> charts = getChartsByReportId(reportId);
 
         // 过滤掉没有SQL的图表
@@ -225,9 +252,10 @@ public class ReportChartService extends ServiceImpl<ReportChartMapper, ReportCha
         Map<Long, String> errors = new ConcurrentHashMap<>();
 
         // 并行执行所有图表SQL
+        final boolean finalSkipTableCheck = skipTablePermissionCheck;
         validCharts.parallelStream().forEach(chart -> {
             try {
-                QueryResultVO result = executeChart(chart.getId(), userId);
+                QueryResultVO result = executeChart(chart.getId(), userId, finalSkipTableCheck);
                 results.put(chart.getId(), result);
                 log.info("图表执行成功 - ChartId: {}, Title: {}, Rows: {}",
                         chart.getId(), chart.getTitle(), result.getRowCount());

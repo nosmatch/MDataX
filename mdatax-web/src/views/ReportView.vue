@@ -10,9 +10,29 @@
           <el-icon><Refresh /></el-icon>
           刷新
         </el-button>
+        <el-button v-if="canEdit" type="primary" @click="handleEdit">
+          <el-icon><Edit /></el-icon>
+          编辑
+        </el-button>
+        <el-button v-if="canDelete" type="danger" @click="handleDelete">
+          <el-icon><Delete /></el-icon>
+          删除
+        </el-button>
         <el-button @click="handleBack">返回</el-button>
       </div>
     </div>
+
+    <el-alert
+      v-if="!isOwner && report.visibility === 'private'"
+      type="info"
+      :closable="false"
+      class="permission-tip"
+    >
+      <template #title>
+        <span v-if="userRole === 'viewer'">您当前是「查看者」，只能查看和执行报表。如需编辑或删除，请联系报表所有者。</span>
+        <span v-else-if="userRole === 'editor'">您当前是「编辑者」，可以查看和编辑报表。</span>
+      </template>
+    </el-alert>
 
     <el-card v-loading="loading">
       <div v-if="error" class="error-message">
@@ -103,13 +123,15 @@
 <script setup>
 import { ref, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import { Refresh } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { Refresh, Edit, Delete } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import request from '../utils/request.js'
+import { useAuthStore } from '../stores/auth.js'
 
 const route = useRoute()
 const router = useRouter()
+const authStore = useAuthStore()
 const reportId = ref(Number(route.params.id))
 
 const report = ref({})
@@ -119,10 +141,29 @@ const error = ref('')
 const chartInstances = new Map()
 const chartErrors = new Map()
 
+// 权限相关
+const currentUserId = ref(authStore.user?.id || null)
+const isOwner = ref(false)
+const userRole = ref(null) // owner, editor, viewer
+const canEdit = ref(false)
+const canDelete = ref(false)
+
 async function loadReportInfo() {
   try {
     const res = await request.get(`/report/${reportId.value}`)
     report.value = res.data
+
+    // 使用后端返回的权限信息
+    isOwner.value = res.data.ownerId === currentUserId.value
+    userRole.value = res.data.userRole || 'viewer'
+    canEdit.value = res.data.canEdit || false
+    canDelete.value = res.data.canDelete || false
+
+    console.log('当前用户ID:', currentUserId.value)
+    console.log('报表所有者ID:', res.data.ownerId)
+    console.log('用户角色:', userRole.value)
+    console.log('可编辑:', canEdit.value)
+    console.log('可删除:', canDelete.value)
   } catch (err) {
     ElMessage.error(err.message || '加载报表信息失败')
   }
@@ -422,6 +463,23 @@ function handleBack() {
   router.push('/report')
 }
 
+function handleEdit() {
+  router.push(`/report/edit/${reportId.value}`)
+}
+
+async function handleDelete() {
+  try {
+    await ElMessageBox.confirm(`确定删除报表「${report.value.name}」吗？`, '提示', { type: 'warning' })
+    await request.delete(`/report/${reportId.value}`)
+    ElMessage.success('删除成功')
+    router.push('/report')
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error(err.message || '删除失败')
+    }
+  }
+}
+
 function handleResize() {
   chartInstances.forEach(({ instance }) => {
     if (instance) {
@@ -472,6 +530,9 @@ onUnmounted(() => {
 .actions {
   display: flex;
   gap: 8px;
+}
+.permission-tip {
+  margin-bottom: 16px;
 }
 .error-message {
   margin-bottom: 16px;

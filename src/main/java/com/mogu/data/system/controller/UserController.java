@@ -102,6 +102,34 @@ public class UserController {
         return Result.success(map);
     }
 
+    /**
+     * 搜索用户
+     * 用于协作者选择等功能
+     *
+     * @param keyword 搜索关键词（用户名或昵称）
+     * @return 用户列表
+     */
+    @GetMapping("/search")
+    public Result<List<User>> searchUsers(@RequestParam(required = false) String keyword) {
+        return Result.success(userService.searchUsers(keyword));
+    }
+
+    /**
+     * 根据用户名获取用户信息
+     * 用于协作者添加等功能
+     *
+     * @param username 用户名
+     * @return 用户信息
+     */
+    @GetMapping("/username/{username}")
+    public Result<Map<String, Object>> getUserByUsername(@PathVariable String username) {
+        User user = userService.findByUsername(username);
+        if (user == null) {
+            return Result.error("用户不存在");
+        }
+        return Result.success(toUserMap(user));
+    }
+
     private void requireAdmin() {
         if (!LoginUser.isCurrentAdmin()) {
             throw new com.mogu.data.common.BusinessException("无权限，仅管理员可操作");
