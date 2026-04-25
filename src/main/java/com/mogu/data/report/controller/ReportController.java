@@ -46,7 +46,7 @@ public class ReportController {
         // 先查询报表列表
         Page<Map<String, Object>> resultPage = reportService.pageReportsWithChartInfo(keyword, page, size, userId);
 
-        // 为每个报表添加图表统计信息
+        // 为每个报表添加图表统计信息和权限信息
         for (Map<String, Object> report : resultPage.getRecords()) {
             Long reportId = (Long) report.get("id");
             List<ReportChart> charts = reportChartService.getChartsByReportId(reportId);
@@ -58,6 +58,14 @@ public class ReportController {
                     .filter(StringUtils::hasText)
                     .collect(Collectors.toSet());
             report.put("chartTypes", new ArrayList<>(chartTypes));
+
+            // 添加用户权限信息
+            boolean hasViewPermission = permissionService.canViewReport(reportId, userId);
+            boolean canEdit = permissionService.canEditReport(reportId, userId);
+            boolean canDelete = permissionService.canDeleteReport(reportId, userId);
+            report.put("hasViewPermission", hasViewPermission);
+            report.put("canEdit", canEdit);
+            report.put("canDelete", canDelete);
         }
 
         return Result.success(resultPage);

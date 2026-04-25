@@ -78,11 +78,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" min-width="160" />
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="280" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="handleView(row)">查看</el-button>
+            <el-button v-if="row.hasViewPermission" link type="primary" size="small" @click="handleView(row)">查看</el-button>
             <el-button v-if="row.canEdit" link type="primary" size="small" @click="handleEdit(row)">编辑</el-button>
             <el-button v-if="row.canDelete" link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button v-if="!row.hasViewPermission && row.visibility === 'private'" link type="warning" size="small" @click="handleApplyPermission(row)">申请权限</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -99,6 +100,33 @@
         />
       </div>
     </el-card>
+
+    <!-- 申请权限对话框 -->
+    <el-dialog v-model="applyDialogVisible" title="申请报表权限" width="500px">
+      <el-form :model="applyForm" label-width="100px">
+        <el-form-item label="报表名称">
+          <span>{{ applyForm.reportName }}</span>
+        </el-form-item>
+        <el-form-item label="申请角色" required>
+          <el-select v-model="applyForm.applyRole" placeholder="请选择申请角色">
+            <el-option label="查看者" value="viewer" />
+            <el-option label="编辑者" value="editor" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="申请理由" required>
+          <el-input
+            v-model="applyForm.applyReason"
+            type="textarea"
+            :rows="3"
+            placeholder="请填写申请理由"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="applyDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleSubmitApply" :loading="applySubmitting">提交申请</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -116,6 +144,16 @@ const visibilityFilter = ref('')
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
+
+// 申请权限相关
+const applyDialogVisible = ref(false)
+const applySubmitting = ref(false)
+const applyForm = ref({
+  reportId: null,
+  reportName: '',
+  applyRole: 'viewer',
+  applyReason: ''
+})
 
 const chartTypeMap = {
   line: { label: '折线图', type: '' },
@@ -192,6 +230,41 @@ async function handleDelete(row) {
     if (err !== 'cancel') {
       ElMessage.error(err.message || '删除失败')
     }
+  }
+}
+
+function handleApplyPermission(row) {
+  applyForm.value = {
+    reportId: row.id,
+    reportName: row.name,
+    applyRole: 'viewer',
+    applyReason: ''
+  }
+  applyDialogVisible.value = true
+}
+
+async function handleSubmitApply() {
+  if (!applyForm.value.applyRole) {
+    ElMessage.warning('请选择申请角色')
+    return
+  }
+  if (!applyForm.value.applyReason.trim()) {
+    ElMessage.warning('请填写申请理由')
+    return
+  }
+
+  applySubmitting.value = true
+  try {
+    await request.post(`/report-apply/report/${applyForm.value.reportId}`, {
+      applyRole: applyForm.value.applyRole,
+      applyReason: applyForm.value.applyReason
+    })
+    ElMessage.success('申请提交成功，请等待报表所有者审批')
+    applyDialogVisible.value = false
+  } catch (err) {
+    ElMessage.error(err.message || '申请提交失败')
+  } finally {
+    applySubmitting.value = false
   }
 }
 

@@ -2,68 +2,135 @@
   <div>
     <div class="page-header">
       <h2>我的审批</h2>
-      <p class="desc">审批您作为责任人的表的权限申请</p>
+      <p class="desc">审批您作为责任人或所有者的权限申请</p>
     </div>
 
     <el-card>
-      <el-tabs v-model="activeTab" @tab-change="onTabChange">
-        <!-- 待审批 -->
-        <el-tab-pane label="待审批" name="pending">
-          <el-table :data="approvalList" v-loading="loading" stripe border>
-            <el-table-column prop="createTime" label="申请时间" min-width="160" />
-            <el-table-column prop="applicantName" label="申请人" width="120" />
-            <el-table-column label="目标表" min-width="200">
-              <template #default="{ row }">
-                <span>{{ row.databaseName }}.{{ row.tableName }}</span>
-                <el-tag v-if="row.tableComment" type="info" size="small" style="margin-left: 8px">{{ row.tableComment }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="权限类型" width="100" align="center">
-              <template #default="{ row }">
-                <el-tag :type="row.applyType === 'READ' ? 'success' : 'warning'" size="small">
-                  {{ row.applyType === 'READ' ? '读权限' : '写权限' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="applyReason" label="申请理由" min-width="200" show-overflow-tooltip />
-            <el-table-column label="操作" width="180" align="center" fixed="right">
-              <template #default="{ row }">
-                <el-button type="success" size="small" @click="handleApprove(row)">通过</el-button>
-                <el-button type="danger" size="small" @click="handleReject(row)">拒绝</el-button>
-              </template>
-            </el-table-column>
-          </el-table>
+      <el-tabs v-model="activeType" @tab-change="onTypeChange">
+        <!-- 表权限审批 -->
+        <el-tab-pane label="表权限审批" name="table">
+          <el-tabs v-model="activeTab" @tab-change="onTabChange">
+            <!-- 待审批 -->
+            <el-tab-pane label="待审批" name="pending">
+              <el-table :data="tablePendingList" v-loading="loading" stripe border>
+                <el-table-column prop="createTime" label="申请时间" min-width="160" />
+                <el-table-column prop="applicantName" label="申请人" width="120" />
+                <el-table-column label="目标表" min-width="200">
+                  <template #default="{ row }">
+                    <span>{{ row.databaseName }}.{{ row.tableName }}</span>
+                    <el-tag v-if="row.tableComment" type="info" size="small" style="margin-left: 8px">{{ row.tableComment }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="权限类型" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.applyType === 'READ' ? 'success' : 'warning'" size="small">
+                      {{ row.applyType === 'READ' ? '读权限' : '写权限' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="applyReason" label="申请理由" min-width="200" show-overflow-tooltip />
+                <el-table-column label="操作" width="180" align="center" fixed="right">
+                  <template #default="{ row }">
+                    <el-button type="success" size="small" @click="handleApproveTable(row)">通过</el-button>
+                    <el-button type="danger" size="small" @click="handleRejectTable(row)">拒绝</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+
+            <!-- 审批历史 -->
+            <el-tab-pane label="审批历史" name="history">
+              <el-table :data="tableHistoryList" v-loading="loading" stripe border>
+                <el-table-column prop="createTime" label="申请时间" min-width="160" />
+                <el-table-column prop="applicantName" label="申请人" width="120" />
+                <el-table-column label="目标表" min-width="200">
+                  <template #default="{ row }">
+                    <span>{{ row.databaseName }}.{{ row.tableName }}</span>
+                    <el-tag v-if="row.tableComment" type="info" size="small" style="margin-left: 8px">{{ row.tableComment }}</el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="权限类型" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.applyType === 'READ' ? 'success' : 'warning'" size="small">
+                      {{ row.applyType === 'READ' ? '读权限' : '写权限' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="applyReason" label="申请理由" min-width="160" show-overflow-tooltip />
+                <el-table-column label="审批结果" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.status === 1 ? 'success' : row.status === 2 ? 'danger' : 'info'" size="small">
+                      {{ row.status === 1 ? '已通过' : row.status === 2 ? '已拒绝' : '未知' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="approveTime" label="审批时间" min-width="160" />
+                <el-table-column prop="approveComment" label="审批意见" min-width="160" show-overflow-tooltip />
+              </el-table>
+            </el-tab-pane>
+          </el-tabs>
         </el-tab-pane>
 
-        <!-- 审批历史 -->
-        <el-tab-pane label="审批历史" name="history">
-          <el-table :data="historyList" v-loading="loading" stripe border>
-            <el-table-column prop="createTime" label="申请时间" min-width="160" />
-            <el-table-column prop="applicantName" label="申请人" width="120" />
-            <el-table-column label="目标表" min-width="200">
-              <template #default="{ row }">
-                <span>{{ row.databaseName }}.{{ row.tableName }}</span>
-                <el-tag v-if="row.tableComment" type="info" size="small" style="margin-left: 8px">{{ row.tableComment }}</el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column label="权限类型" width="100" align="center">
-              <template #default="{ row }">
-                <el-tag :type="row.applyType === 'READ' ? 'success' : 'warning'" size="small">
-                  {{ row.applyType === 'READ' ? '读权限' : '写权限' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="applyReason" label="申请理由" min-width="160" show-overflow-tooltip />
-            <el-table-column label="审批结果" width="100" align="center">
-              <template #default="{ row }">
-                <el-tag :type="row.status === 1 ? 'success' : row.status === 2 ? 'danger' : 'info'" size="small">
-                  {{ row.status === 1 ? '已通过' : row.status === 2 ? '已拒绝' : '未知' }}
-                </el-tag>
-              </template>
-            </el-table-column>
-            <el-table-column prop="approveTime" label="审批时间" min-width="160" />
-            <el-table-column prop="approveComment" label="审批意见" min-width="160" show-overflow-tooltip />
-          </el-table>
+        <!-- 报表权限审批 -->
+        <el-tab-pane label="报表权限审批" name="report">
+          <el-tabs v-model="activeTab" @tab-change="onTabChange">
+            <!-- 待审批 -->
+            <el-tab-pane label="待审批" name="pending">
+              <el-table :data="reportPendingList" v-loading="loading" stripe border>
+                <el-table-column prop="createTime" label="申请时间" min-width="160" />
+                <el-table-column prop="applicantName" label="申请人" width="120" />
+                <el-table-column label="报表名称" min-width="200">
+                  <template #default="{ row }">
+                    {{ row.reportName }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="申请角色" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.applyRole === 'editor' ? 'warning' : 'info'" size="small">
+                      {{ row.applyRole === 'editor' ? '编辑者' : '查看者' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="applyReason" label="申请理由" min-width="200" show-overflow-tooltip />
+                <el-table-column label="操作" width="180" align="center" fixed="right">
+                  <template #default="{ row }">
+                    <el-button type="success" size="small" @click="handleApproveReport(row)">通过</el-button>
+                    <el-button type="danger" size="small" @click="handleRejectReport(row)">拒绝</el-button>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </el-tab-pane>
+
+            <!-- 审批历史 -->
+            <el-tab-pane label="审批历史" name="history">
+              <el-table :data="reportHistoryList" v-loading="loading" stripe border>
+                <el-table-column prop="createTime" label="申请时间" min-width="160" />
+                <el-table-column prop="applicantName" label="申请人" width="120" />
+                <el-table-column label="报表名称" min-width="200">
+                  <template #default="{ row }">
+                    {{ row.reportName }}
+                  </template>
+                </el-table-column>
+                <el-table-column label="申请角色" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.applyRole === 'editor' ? 'warning' : 'info'" size="small">
+                      {{ row.applyRole === 'editor' ? '编辑者' : '查看者' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="applyReason" label="申请理由" min-width="160" show-overflow-tooltip />
+                <el-table-column label="审批结果" width="100" align="center">
+                  <template #default="{ row }">
+                    <el-tag :type="row.status === 1 ? 'success' : row.status === 2 ? 'danger' : 'info'" size="small">
+                      {{ row.status === 1 ? '已通过' : row.status === 2 ? '已拒绝' : '未知' }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column prop="approveTime" label="审批时间" min-width="160" />
+                <el-table-column prop="approveComment" label="审批意见" min-width="160" show-overflow-tooltip />
+              </el-table>
+            </el-tab-pane>
+          </el-tabs>
         </el-tab-pane>
       </el-tabs>
 
@@ -84,7 +151,12 @@
     <el-dialog v-model="rejectVisible" title="拒绝申请" width="480px" :close-on-click-modal="false">
       <el-form :model="rejectForm" :rules="rejectRules" ref="rejectFormRef" label-width="80px">
         <el-form-item label="申请人">{{ currentRow?.applicantName }}</el-form-item>
-        <el-form-item label="目标表">{{ currentRow?.databaseName }}.{{ currentRow?.tableName }}</el-form-item>
+        <el-form-item v-if="currentType === 'table'" label="目标表">
+          {{ currentRow?.databaseName }}.{{ currentRow?.tableName }}
+        </el-form-item>
+        <el-form-item v-else label="报表名称">
+          {{ currentRow?.reportName }}
+        </el-form-item>
         <el-form-item label="审批意见" prop="comment">
           <el-input
             v-model="rejectForm.comment"
@@ -109,19 +181,23 @@ import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import request from '../utils/request.js'
 
+const activeType = ref('table')
 const activeTab = ref('pending')
 const loading = ref(false)
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
 
-const approvalList = ref([])
-const historyList = ref([])
+const tablePendingList = ref([])
+const tableHistoryList = ref([])
+const reportPendingList = ref([])
+const reportHistoryList = ref([])
 
 const rejectVisible = ref(false)
 const rejectLoading = ref(false)
 const rejectFormRef = ref(null)
 const currentRow = ref(null)
+const currentType = ref(null) // 'table' or 'report'
 const rejectForm = ref({ comment: '' })
 const rejectRules = {
   comment: [
@@ -133,24 +209,46 @@ const rejectRules = {
 const fetchData = async () => {
   loading.value = true
   try {
-    if (activeTab.value === 'pending') {
-      const res = await request.get('/permission/apply/approval/pending', {
-        params: { page: page.value, size: size.value }
-      })
-      approvalList.value = res.data.records || []
-      total.value = res.data.total
+    if (activeType.value === 'table') {
+      if (activeTab.value === 'pending') {
+        const res = await request.get('/permission/apply/approval/pending', {
+          params: { page: page.value, size: size.value }
+        })
+        tablePendingList.value = res.data.records || []
+        total.value = res.data.total
+      } else {
+        const res = await request.get('/permission/apply/approval/history', {
+          params: { page: page.value, size: size.value }
+        })
+        tableHistoryList.value = res.data.records || []
+        total.value = res.data.total
+      }
     } else {
-      const res = await request.get('/permission/apply/approval/history', {
-        params: { page: page.value, size: size.value }
-      })
-      historyList.value = res.data.records || []
-      total.value = res.data.total
+      if (activeTab.value === 'pending') {
+        const res = await request.get('/report-apply/pending', {
+          params: { page: page.value, size: size.value }
+        })
+        reportPendingList.value = res.data.records || []
+        total.value = res.data.total
+      } else {
+        const res = await request.get('/report-apply/history', {
+          params: { page: page.value, size: size.value }
+        })
+        reportHistoryList.value = res.data.records || []
+        total.value = res.data.total
+      }
     }
   } catch (error) {
     ElMessage.error(error.message || '获取数据失败')
   } finally {
     loading.value = false
   }
+}
+
+const onTypeChange = () => {
+  page.value = 1
+  activeTab.value = 'pending'
+  fetchData()
 }
 
 const onTabChange = () => {
@@ -169,7 +267,7 @@ const handleSizeChange = (val) => {
   fetchData()
 }
 
-const handleApprove = async (row) => {
+const handleApproveTable = async (row) => {
   try {
     await request.put(`/permission/apply/approval/${row.id}`, {
       action: 'APPROVE',
@@ -182,8 +280,29 @@ const handleApprove = async (row) => {
   }
 }
 
-const handleReject = (row) => {
+const handleRejectTable = (row) => {
   currentRow.value = row
+  currentType.value = 'table'
+  rejectForm.value.comment = ''
+  rejectVisible.value = true
+}
+
+const handleApproveReport = async (row) => {
+  try {
+    await request.put(`/report-apply/${row.id}`, {
+      action: 'APPROVE',
+      comment: '同意'
+    })
+    ElMessage.success('已通过')
+    fetchData()
+  } catch (error) {
+    ElMessage.error(error.response?.data?.message || '操作失败')
+  }
+}
+
+const handleRejectReport = (row) => {
+  currentRow.value = row
+  currentType.value = 'report'
   rejectForm.value.comment = ''
   rejectVisible.value = true
 }
@@ -194,7 +313,10 @@ const confirmReject = async () => {
     if (!valid) return
     rejectLoading.value = true
     try {
-      await request.put(`/permission/apply/approval/${currentRow.value.id}`, {
+      const url = currentType.value === 'table'
+        ? `/permission/apply/approval/${currentRow.value.id}`
+        : `/report-apply/${currentRow.value.id}`
+      await request.put(url, {
         action: 'REJECT',
         comment: rejectForm.value.comment
       })

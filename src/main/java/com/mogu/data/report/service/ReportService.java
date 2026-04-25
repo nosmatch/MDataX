@@ -92,6 +92,7 @@ public class ReportService extends ServiceImpl<ReportMapper, Report> {
 
     /**
      * 分页查询报表列表（带权限过滤）
+     * 修改为返回所有报表，但标注用户权限状态
      */
     private Page<Report> pageReportsWithPermission(String keyword, long page, long size, Long userId) {
         LambdaQueryWrapper<Report> wrapper = new LambdaQueryWrapper<>();
@@ -101,17 +102,7 @@ public class ReportService extends ServiceImpl<ReportMapper, Report> {
             wrapper.like(Report::getName, keyword);
         }
 
-        // 权限过滤：只返回用户有权限查看的报表
-        // 1. 用户拥有的报表
-        // 2. 公开的报表
-        // 3. 用户作为协作者的报表
-        wrapper.and(w -> w.eq(Report::getOwnerId, userId)
-                .or()
-                .eq(Report::getVisibility, "public")
-                .or()
-                .inSql(Report::getId,
-                        "SELECT DISTINCT report_id FROM report_collaborator WHERE user_id = " + userId));
-
+        // 不再过滤权限，返回所有报表，由前端根据权限字段显示不同操作
         wrapper.orderByDesc(Report::getCreateTime);
         return page(new Page<>(page, size), wrapper);
     }
