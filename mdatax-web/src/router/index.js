@@ -29,6 +29,9 @@ const routes = [
             { path: 'report/edit', name: 'ReportCreate', component: () => import('../views/ReportEdit.vue') },
             { path: 'report/edit/:id', name: 'ReportEdit', component: () => import('../views/ReportEdit.vue') },
             { path: 'report/view/:id', name: 'ReportView', component: () => import('../views/ReportView.vue') },
+            { path: 'quality/dashboard', name: 'QualityDashboard', component: () => import('../views/QualityDashboard.vue') },
+            { path: 'quality/rules', name: 'QualityRules', component: () => import('../views/QualityRules.vue') },
+            { path: 'quality/reports', name: 'QualityReports', component: () => import('../views/QualityReports.vue') },
             { path: 'system', name: 'System', component: () => import('../views/System.vue') },
         ]
     }

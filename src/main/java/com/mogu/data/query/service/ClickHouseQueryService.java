@@ -128,7 +128,8 @@ public class ClickHouseQueryService {
         }
         String[] forbidden = {"INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "CREATE", "TRUNCATE", "GRANT"};
         for (String keyword : forbidden) {
-            if (cleaned.contains(keyword)) {
+            // 使用词边界匹配，避免误伤含关键字子串的列名（如 created_at、update_time）
+            if (cleaned.matches("(?s).*\\b" + keyword + "\\b.*")) {
                 return false;
             }
         }

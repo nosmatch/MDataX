@@ -43,6 +43,18 @@ public class Result<T> implements Serializable {
         return new Result<>(ResultCode.SUCCESS.getCode(), message, data);
     }
 
+    public static <T> Result<T> ok() {
+        return success();
+    }
+
+    public static <T> Result<T> ok(T data) {
+        return success(data);
+    }
+
+    public static <T> Result<T> ok(String message, T data) {
+        return success(message, data);
+    }
+
     public static <T> Result<T> error(String message) {
         return new Result<>(ResultCode.INTERNAL_ERROR.getCode(), message, null);
     }

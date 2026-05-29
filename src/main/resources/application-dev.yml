@@ -71,3 +71,11 @@ mybatis-plus:
       logic-delete-field: deleted
       logic-delete-value: 1
       logic-not-delete-value: 0
+
+# 质量监控告警配置
+quality:
+  alert:
+    webhook:
+      enabled: true
+      # 钉钉/企业微信 webhook 地址
+      url: https://oapi.dingtalk.com/robot/send?access_token=YOUR_TOKEN

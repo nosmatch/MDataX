@@ -57,6 +57,15 @@
             <el-icon><TrendCharts /></el-icon>
             <span>数据报表</span>
           </el-menu-item>
+          <el-sub-menu index="/quality">
+            <template #title>
+              <el-icon><DataAnalysis /></el-icon>
+              <span>质量监控</span>
+            </template>
+            <el-menu-item index="/quality/dashboard">质量大盘</el-menu-item>
+            <el-menu-item index="/quality/rules">规则管理</el-menu-item>
+            <el-menu-item index="/quality/reports">报告查询</el-menu-item>
+          </el-sub-menu>
           <el-sub-menu index="/permission">
             <template #title>
               <el-icon><Lock /></el-icon>
@@ -85,7 +94,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth.js'
-import { HomeFilled, Connection, Document, Folder, Lock, Setting, ArrowDown, TrendCharts } from '@element-plus/icons-vue'
+import { HomeFilled, Connection, Document, Folder, Lock, Setting, ArrowDown, TrendCharts, DataAnalysis } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

@@ -60,7 +60,7 @@ CREATE TABLE IF NOT EXISTS sys_role_permission (
 
 -- 插入默认管理员
 INSERT INTO sys_user (username, password, nickname, email, status) VALUES
-('admin', '$2a$10$XJ7lH.xaSI/a6Jt6kmATw.WsdU/OyunA6JTdbbiDbTKPkUxyaR6M2', '管理员', 'admin@mdatax.com', 1)
+('admin', '$2a$10$KlGlVcQwnn.bcoNewJd1eeIEjvMCyNqO6QgpAAb8w1fnhZSPaSQDW', '管理员', 'admin@mdatax.com', 1)
 ON DUPLICATE KEY UPDATE id = id;
 
 -- 插入默认角色
