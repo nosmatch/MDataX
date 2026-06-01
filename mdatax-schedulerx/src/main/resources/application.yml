@@ -5,7 +5,7 @@ spring:
   application:
     name: schedulerx
   datasource:
-    url: jdbc:mysql://localhost:3306/schedulerx?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
+    url: jdbc:mysql://localhost:3306/mdatax?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: root
     password: root123
     driver-class-name: com.mysql.cj.jdbc.Driver
