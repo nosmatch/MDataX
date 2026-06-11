@@ -198,10 +198,10 @@ public class SyncTaskService extends ServiceImpl<SyncTaskMapper, SyncTask> {
         task.setStatus(newStatus);
         updateById(task);
 
-        // 同步调度状态
+        // 同步调度状态（根据 scheduler.type 自动走 DS 或 SchedulerX）
         if (newStatus == 1 && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
             schedulerManager.scheduleSyncTask(task);
-            updateById(task); // 保存 ds_process_code / ds_schedule_id
+            updateById(task);
         } else {
             schedulerManager.cancelSyncTask(taskId);
         }

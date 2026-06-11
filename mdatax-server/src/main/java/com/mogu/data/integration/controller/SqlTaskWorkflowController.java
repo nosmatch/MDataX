@@ -2,10 +2,9 @@ package com.mogu.data.integration.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mogu.data.common.Result;
-import com.mogu.data.integration.dolphinscheduler.DolphinSchedulerClient;
-import com.mogu.data.integration.dolphinscheduler.DolphinSchedulerProperties;
 import com.mogu.data.integration.entity.SqlTaskWorkflow;
 import com.mogu.data.integration.entity.WorkflowInstance;
+import com.mogu.data.integration.scheduler.TaskSchedulerManager;
 import com.mogu.data.integration.service.SqlTaskLogService;
 import com.mogu.data.integration.service.SqlTaskWorkflowService;
 import com.mogu.data.integration.service.WorkflowInstanceService;
@@ -16,8 +15,8 @@ import org.springframework.web.bind.annotation.*;
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 import java.time.LocalDateTime;
-import java.util.HashMap;
 import java.util.Map;
+import java.util.HashMap;
 
 /**
  * SQL任务工作流（DAG）管理控制器
@@ -30,8 +29,7 @@ import java.util.Map;
 public class SqlTaskWorkflowController {
 
     private final SqlTaskWorkflowService workflowService;
-    private final DolphinSchedulerClient dsClient;
-    private final DolphinSchedulerProperties props;
+    private final TaskSchedulerManager schedulerManager;
     private final WorkflowInstanceService instanceService;
     private final SqlTaskLogService sqlTaskLogService;
 
@@ -88,26 +86,41 @@ public class SqlTaskWorkflowController {
     // ==================== 实例管理 ====================
 
     @PostMapping("/{id}/execute")
-    public Result<Long> execute(@PathVariable Long id) {
+    public Result<String> execute(@PathVariable Long id) {
         SqlTaskWorkflow workflow = workflowService.getById(id);
-        if (workflow == null || workflow.getDsProcessCode() == null) {
-            return Result.error("工作流未同步到调度器，无法执行");
+        if (workflow == null) {
+            return Result.error("工作流不存在");
         }
         if (workflow.getStatus() == null || workflow.getStatus() != 1) {
             return Result.error("工作流已停用，无法执行");
         }
-        Long instanceId = dsClient.startProcessInstance(workflow.getDsProcessCode());
-        instanceService.recordManualStart(id, instanceId);
+        if (workflow.getDsProcessCode() == null && workflow.getSchedulerxDagId() == null) {
+            return Result.error("工作流未同步到调度器，无法执行");
+        }
+        String instanceId = schedulerManager.triggerWorkflow(workflow);
+        if (instanceId == null) {
+            return Result.error("工作流未同步到调度器，无法执行");
+        }
+        // 兼容 DS 模式记录实例
+        try {
+            Long dsId = Long.valueOf(instanceId);
+            instanceService.recordManualStart(id, dsId);
+        } catch (NumberFormatException e) {
+            // SchedulerX 模式，实例由 SchedulerX 自行管理
+        }
         return Result.success(instanceId);
     }
 
     @GetMapping("/{id}/instances")
     public Result<String> listInstances(@PathVariable Long id) {
         SqlTaskWorkflow workflow = workflowService.getById(id);
-        if (workflow == null || workflow.getDsProcessCode() == null) {
+        if (workflow == null) {
+            return Result.error("工作流不存在");
+        }
+        if (workflow.getDsProcessCode() == null && workflow.getSchedulerxDagId() == null) {
             return Result.error("工作流未同步到调度器");
         }
-        String instances = dsClient.listProcessInstances(workflow.getDsProcessCode());
+        String instances = schedulerManager.listWorkflowInstances(workflow);
         return Result.success(instances);
     }
 
@@ -144,36 +157,21 @@ public class SqlTaskWorkflowController {
                 .list());
     }
 
-    @GetMapping("/ds-url")
-    public Result<Map<String, String>> dsUrl() {
-        String baseUrl = props.getBaseUrl();
-        if (baseUrl == null || baseUrl.isEmpty()) {
-            return Result.error("DolphinScheduler 地址未配置");
-        }
-        // DS 3.2.1 项目任务首页 URL
-        String url = baseUrl.replaceAll("/api$", "").replaceAll("/$", "")
-                + "/ui/projects/" + props.getProjectCode()
-                + "/workflow-definition?projectName=MDataX";
-        Map<String, String> result = new HashMap<>();
-        result.put("dsUrl", url);
-        return Result.success(result);
-    }
-
     @PostMapping("/instances/{instanceId}/stop")
-    public Result<Void> stopInstance(@PathVariable Long instanceId) {
-        dsClient.stopProcessInstance(instanceId);
+    public Result<Void> stopInstance(@PathVariable String instanceId) {
+        schedulerManager.stopWorkflowInstance(instanceId);
         return Result.success();
     }
 
     @PostMapping("/instances/{instanceId}/pause")
-    public Result<Void> pauseInstance(@PathVariable Long instanceId) {
-        dsClient.pauseProcessInstance(instanceId);
+    public Result<Void> pauseInstance(@PathVariable String instanceId) {
+        schedulerManager.pauseWorkflowInstance(instanceId);
         return Result.success();
     }
 
     @PostMapping("/instances/{instanceId}/retry")
-    public Result<Void> retryInstance(@PathVariable Long instanceId) {
-        dsClient.retryFailureTask(instanceId);
+    public Result<Void> retryInstance(@PathVariable String instanceId) {
+        schedulerManager.retryWorkflowInstance(instanceId);
         return Result.success();
     }
 

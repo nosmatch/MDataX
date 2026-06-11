@@ -18,9 +18,9 @@ server:
   servlet:
     context-path: /api
 
-# 调度模式: local(本地Spring调度) / dolphinscheduler
+# 调度模式: local(本地Spring调度) / dolphinscheduler / schedulerx
 scheduler:
-  type: dolphinscheduler
+  type: schedulerx
 
 logging:
   level:

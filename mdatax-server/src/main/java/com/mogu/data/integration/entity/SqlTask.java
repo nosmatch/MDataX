@@ -42,6 +42,8 @@ public class SqlTask {
 
     private Long dsTaskCode;
 
+    private String schedulerxDagId;
+
     private Integer retryTimes;
 
     private Integer retryInterval;

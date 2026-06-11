@@ -105,4 +105,61 @@ public interface TaskSchedulerManager {
      * @param workflow SQL 任务工作流
      */
     void rescheduleWorkflow(SqlTaskWorkflow workflow);
+
+    // ==================== 手动触发 ====================
+
+    /**
+     * 手动触发 SQL 任务。
+     *
+     * @param task SQL 任务
+     * @return 实例标识符
+     */
+    String triggerSqlTask(SqlTask task);
+
+    /**
+     * 手动触发同步任务。
+     *
+     * @param task 同步任务
+     * @return 实例标识符
+     */
+    String triggerSyncTask(SyncTask task);
+
+    /**
+     * 手动触发工作流。
+     *
+     * @param workflow SQL 任务工作流
+     * @return 实例标识符
+     */
+    String triggerWorkflow(SqlTaskWorkflow workflow);
+
+    // ==================== 实例操作 ====================
+
+    /**
+     * 停止工作流实例。
+     *
+     * @param instanceId 实例标识符
+     */
+    void stopWorkflowInstance(String instanceId);
+
+    /**
+     * 暂停工作流实例。
+     *
+     * @param instanceId 实例标识符
+     */
+    void pauseWorkflowInstance(String instanceId);
+
+    /**
+     * 重试工作流实例的失败任务。
+     *
+     * @param instanceId 实例标识符
+     */
+    void retryWorkflowInstance(String instanceId);
+
+    /**
+     * 查询工作流实例列表。
+     *
+     * @param workflow SQL 任务工作流
+     * @return 实例列表 JSON 字符串
+     */
+    String listWorkflowInstances(SqlTaskWorkflow workflow);
 }

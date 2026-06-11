@@ -42,6 +42,7 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
     private final SyncTaskMapper syncTaskMapper;
     private final SqlTaskDependencyMapper sqlTaskDependencyMapper;
     private final SqlTaskWorkflowMapper sqlTaskWorkflowMapper;
+    private final com.mogu.data.integration.service.WorkflowInstanceService workflowInstanceService;
 
     @Override
     public void scheduleSyncTask(SyncTask task) {
@@ -173,6 +174,84 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
     public void rescheduleWorkflow(SqlTaskWorkflow workflow) {
         cancelWorkflowInternal(workflow);
         scheduleWorkflow(workflow);
+    }
+
+    // ==================== 手动触发 ====================
+
+    @Override
+    public String triggerSqlTask(SqlTask task) {
+        if (task == null || task.getDsProcessCode() == null) {
+            return null;
+        }
+        Long instanceId = dsClient.startProcessInstance(task.getDsProcessCode());
+        return instanceId != null ? String.valueOf(instanceId) : null;
+    }
+
+    @Override
+    public String triggerSyncTask(SyncTask task) {
+        if (task == null || task.getDsProcessCode() == null) {
+            return null;
+        }
+        Long instanceId = dsClient.startProcessInstance(task.getDsProcessCode());
+        return instanceId != null ? String.valueOf(instanceId) : null;
+    }
+
+    @Override
+    public String triggerWorkflow(SqlTaskWorkflow workflow) {
+        if (workflow == null || workflow.getDsProcessCode() == null) {
+            return null;
+        }
+        Long instanceId = dsClient.startProcessInstance(workflow.getDsProcessCode());
+        if (instanceId != null) {
+            workflowInstanceService.recordManualStart(workflow.getId(), instanceId);
+        }
+        return instanceId != null ? String.valueOf(instanceId) : null;
+    }
+
+    // ==================== 实例操作 ====================
+
+    @Override
+    public void stopWorkflowInstance(String instanceId) {
+        if (instanceId == null) {
+            return;
+        }
+        try {
+            dsClient.stopProcessInstance(Long.valueOf(instanceId));
+        } catch (NumberFormatException e) {
+            log.warn("实例 ID 格式非法: {}", instanceId);
+        }
+    }
+
+    @Override
+    public void pauseWorkflowInstance(String instanceId) {
+        if (instanceId == null) {
+            return;
+        }
+        try {
+            dsClient.pauseProcessInstance(Long.valueOf(instanceId));
+        } catch (NumberFormatException e) {
+            log.warn("实例 ID 格式非法: {}", instanceId);
+        }
+    }
+
+    @Override
+    public void retryWorkflowInstance(String instanceId) {
+        if (instanceId == null) {
+            return;
+        }
+        try {
+            dsClient.retryFailureTask(Long.valueOf(instanceId));
+        } catch (NumberFormatException e) {
+            log.warn("实例 ID 格式非法: {}", instanceId);
+        }
+    }
+
+    @Override
+    public String listWorkflowInstances(SqlTaskWorkflow workflow) {
+        if (workflow == null || workflow.getDsProcessCode() == null) {
+            return null;
+        }
+        return dsClient.listProcessInstances(workflow.getDsProcessCode());
     }
 
     // ==================== Workflow 内部方法 ====================

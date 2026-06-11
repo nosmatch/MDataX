@@ -46,6 +46,8 @@ public class SyncTask {
 
     private Long dsTaskCode;
 
+    private String schedulerxDagId;
+
     private Integer retryTimes;
 
     private Integer retryInterval;

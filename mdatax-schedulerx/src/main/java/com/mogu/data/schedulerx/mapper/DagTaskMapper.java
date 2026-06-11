@@ -1,7 +1,7 @@
 package com.mogu.data.schedulerx.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.mogu.data.schedulerx.entity.DagTask;
+import com.mogu.data.schedulerx.entity.DagTaskEntity;
 import org.apache.ibatis.annotations.Mapper;
 
 /**
@@ -10,6 +10,6 @@ import org.apache.ibatis.annotations.Mapper;
  * @author fengzhu
  */
 @Mapper
-public interface DagTaskMapper extends BaseMapper<DagTask> {
+public interface DagTaskMapper extends BaseMapper<DagTaskEntity> {
 
 }

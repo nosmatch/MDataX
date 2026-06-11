@@ -42,6 +42,14 @@ clickhouse:
       time-between-eviction-runs-millis: 60000
       min-evictable-idle-time-millis: 300000
 
+# SchedulerX 配置
+schedulerx:
+  enabled: true
+  base-url: http://localhost:6081
+  callback-url: http://localhost:7081
+  # 回调密钥，用于 SchedulerX 触发 MDataX 任务时的身份校验（与 DS 共用同一密钥）
+  callback-secret: mdatax-dev-secret-change-in-production
+
 # DolphinScheduler 配置
 dolphinscheduler:
   enabled: true

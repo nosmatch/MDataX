@@ -128,7 +128,7 @@ public class SqlTaskWorkflowService extends ServiceImpl<SqlTaskWorkflowMapper, S
         if (taskCount > 0) {
             throw new IllegalArgumentException("工作流内存在任务，无法删除");
         }
-        if (workflow.getDsProcessCode() != null) {
+        if (workflow.getDsProcessCode() != null || workflow.getSchedulerxDagId() != null) {
             schedulerManager.deleteWorkflow(workflowId);
         }
         removeById(workflowId);

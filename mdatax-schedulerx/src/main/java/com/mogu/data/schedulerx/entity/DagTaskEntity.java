@@ -14,7 +14,7 @@ import java.time.LocalDateTime;
  */
 @Data
 @TableName("sx_dag_task")
-public class DagTask {
+public class DagTaskEntity {
 
     @TableId(type = IdType.AUTO)
     private Long id;

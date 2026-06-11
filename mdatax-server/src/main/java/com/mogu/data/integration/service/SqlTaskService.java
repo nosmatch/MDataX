@@ -191,14 +191,12 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
         if (task.getWorkflowId() != null) {
             // Workflow 内任务：触发整个 Workflow
             SqlTaskWorkflow workflow = workflowService.getById(task.getWorkflowId());
-            if (workflow != null && workflow.getDsProcessCode() != null) {
-                dsClient.startProcessInstance(workflow.getDsProcessCode());
+            if (workflow != null) {
+                schedulerManager.triggerWorkflow(workflow);
             }
         } else {
             // 独立任务：直接触发
-            if (task.getDsProcessCode() != null) {
-                dsClient.startProcessInstance(task.getDsProcessCode());
-            }
+            schedulerManager.triggerSqlTask(task);
         }
     }
 
@@ -286,6 +284,7 @@ public class SqlTaskService extends ServiceImpl<SqlTaskMapper, SqlTask> {
         task.setStatus(newStatus);
         updateById(task);
 
+        // 同步调度状态（根据 scheduler.type 自动走 DS 或 SchedulerX）
         if (newStatus == 1 && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
             schedulerManager.scheduleSqlTask(task);
             updateById(task);

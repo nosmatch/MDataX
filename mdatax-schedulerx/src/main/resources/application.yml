@@ -1,5 +1,5 @@
 server:
-  port: 8081
+  port: 6081
 
 spring:
   application:
@@ -18,6 +18,28 @@ mybatis-plus:
     map-underscore-to-camel-case: true
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
 
+  quartz:
+    job-store-type: jdbc
+    jdbc:
+      initialize-schema: never
+    properties:
+      org:
+        quartz:
+          scheduler:
+            instanceName: SchedulerX
+            instanceId: AUTO
+          jobStore:
+            driverDelegateClass: org.quartz.impl.jdbcjobstore.StdJDBCDelegate
+            tablePrefix: sx_qrtz_
+            isClustered: true
+            clusterCheckinInterval: 20000
+            useProperties: false
+            misfireThreshold: 60000
+          threadPool:
+            class: org.quartz.simpl.SimpleThreadPool
+            threadCount: 10
+            threadPriority: 5
+
 schedulerx:
   callback:
-    base-url: http://localhost:8081
+    base-url: http://localhost:7081

@@ -179,4 +179,39 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
         throw new UnsupportedOperationException("本地调度器不支持 Workflow");
     }
 
+    @Override
+    public String triggerSqlTask(SqlTask task) {
+        throw new UnsupportedOperationException("本地调度器不支持手动触发");
+    }
+
+    @Override
+    public String triggerSyncTask(SyncTask task) {
+        throw new UnsupportedOperationException("本地调度器不支持手动触发");
+    }
+
+    @Override
+    public String triggerWorkflow(com.mogu.data.integration.entity.SqlTaskWorkflow workflow) {
+        throw new UnsupportedOperationException("本地调度器不支持手动触发");
+    }
+
+    @Override
+    public void stopWorkflowInstance(String instanceId) {
+        throw new UnsupportedOperationException("本地调度器不支持实例操作");
+    }
+
+    @Override
+    public void pauseWorkflowInstance(String instanceId) {
+        throw new UnsupportedOperationException("本地调度器不支持实例操作");
+    }
+
+    @Override
+    public void retryWorkflowInstance(String instanceId) {
+        throw new UnsupportedOperationException("本地调度器不支持实例操作");
+    }
+
+    @Override
+    public String listWorkflowInstances(com.mogu.data.integration.entity.SqlTaskWorkflow workflow) {
+        throw new UnsupportedOperationException("本地调度器不支持实例查询");
+    }
+
 }

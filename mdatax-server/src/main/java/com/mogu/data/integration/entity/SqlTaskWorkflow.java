@@ -34,6 +34,8 @@ public class SqlTaskWorkflow {
 
     private Integer dsScheduleId;
 
+    private String schedulerxDagId;
+
     @TableLogic
     @JsonIgnore
     private Integer deleted;

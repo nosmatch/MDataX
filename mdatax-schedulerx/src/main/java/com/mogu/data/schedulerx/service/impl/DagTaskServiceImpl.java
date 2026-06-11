@@ -1,7 +1,7 @@
 package com.mogu.data.schedulerx.service.impl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
-import com.mogu.data.schedulerx.entity.DagTask;
+import com.mogu.data.schedulerx.entity.DagTaskEntity;
 import com.mogu.data.schedulerx.mapper.DagTaskMapper;
 import com.mogu.data.schedulerx.service.DagTaskService;
 import org.springframework.stereotype.Service;
@@ -12,6 +12,6 @@ import org.springframework.stereotype.Service;
  * @author fengzhu
  */
 @Service
-public class DagTaskServiceImpl extends ServiceImpl<DagTaskMapper, DagTask> implements DagTaskService {
+public class DagTaskServiceImpl extends ServiceImpl<DagTaskMapper, DagTaskEntity> implements DagTaskService {
 
 }
