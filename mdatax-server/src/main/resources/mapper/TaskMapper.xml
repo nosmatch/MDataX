@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mogu.data.integration.mapper.TaskMapper">
+
+    <select id="selectLastExecutionByTaskIds" resultType="com.mogu.data.integration.mapper.TaskMapper$TaskExecutionExt">
+        SELECT
+            task_id AS taskId,
+            status,
+            start_time AS startTime,
+            execution_id AS executionId
+        FROM task_execution
+        WHERE task_id IN
+        <foreach collection="taskIds" item="taskId" open="(" separator="," close=")">
+            #{taskId}
+        </foreach>
+          AND deleted = 0
+          AND start_time = (
+              SELECT MAX(start_time)
+              FROM task_execution t2
+              WHERE t2.task_id = task_execution.task_id
+                AND t2.deleted = 0
+          )
+    </select>
+
+    <select id="pageTasksByLastExecutionStatus" resultType="com.mogu.data.integration.entity.Task">
+        SELECT t.*
+        FROM task t
+        LEFT JOIN (
+            SELECT task_id, status AS last_status
+            FROM task_execution e1
+            WHERE deleted = 0
+              AND start_time = (
+                  SELECT MAX(start_time)
+                  FROM task_execution e2
+                  WHERE e2.task_id = e1.task_id
+                    AND e2.deleted = 0
+              )
+        ) last_exec ON t.id = last_exec.task_id
+        WHERE t.deleted = 0
+        <if test="keyword != null and keyword != ''">
+            AND (t.task_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR t.task_code LIKE CONCAT('%', #{keyword}, '%')
+                 OR t.tags LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="taskType != null and taskType != ''">
+            AND t.task_type = #{taskType}
+        </if>
+        <if test="status != null">
+            AND t.status = #{status}
+        </if>
+        <if test="ownerUserId != null">
+            AND t.owner_user_id = #{ownerUserId}
+        </if>
+        <if test="priority != null">
+            AND t.priority &gt;= #{priority}
+        </if>
+        <if test="tags != null and tags != ''">
+            AND t.tags LIKE CONCAT('%', #{tags}, '%')
+        </if>
+        <if test="startTime != null">
+            AND t.create_time &gt;= #{startTime}
+        </if>
+        <if test="endTime != null">
+            AND t.create_time &lt;= #{endTime}
+        </if>
+        <choose>
+            <when test="lastExecutionStatus == 'NONE'">
+                AND last_exec.last_status IS NULL
+            </when>
+            <when test="lastExecutionStatus != null and lastExecutionStatus != ''">
+                AND last_exec.last_status = #{lastExecutionStatus}
+            </when>
+        </choose>
+        ORDER BY t.create_time DESC
+    </select>
+
+</mapper>

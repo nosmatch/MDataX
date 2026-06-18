@@ -67,14 +67,9 @@ public class TimeoutChecker {
             return false;
         }
 
-        // 默认超时 10 分钟
-        int timeoutSeconds = 600;
-        if (task.getDurationMs() != null && task.getDurationMs() > 0) {
-            // 如果有配置的超时时间，使用配置的值
-            // 这里简化处理：实际应该从 dag_task 配置中获取
-        }
+        int timeoutSeconds = task.getTimeoutSeconds() != null && task.getTimeoutSeconds() > 0
+                ? task.getTimeoutSeconds() : 600;
 
-        // 计算已经执行的时间（秒）
         long elapsedSeconds = java.time.Duration.between(task.getStartTime(), now).getSeconds();
         return elapsedSeconds > timeoutSeconds;
     }

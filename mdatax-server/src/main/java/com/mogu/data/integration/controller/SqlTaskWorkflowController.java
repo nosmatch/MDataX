@@ -1,6 +1,8 @@
 package com.mogu.data.integration.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mogu.data.common.Result;
 import com.mogu.data.integration.entity.SqlTaskWorkflow;
 import com.mogu.data.integration.entity.WorkflowInstance;
@@ -8,21 +10,26 @@ import com.mogu.data.integration.scheduler.TaskSchedulerManager;
 import com.mogu.data.integration.service.SqlTaskLogService;
 import com.mogu.data.integration.service.SqlTaskWorkflowService;
 import com.mogu.data.integration.service.WorkflowInstanceService;
+import com.mogu.data.integration.vo.InstanceVO;
+import com.mogu.data.integration.vo.TaskInstanceVO;
 import lombok.Data;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import javax.validation.Valid;
 import javax.validation.constraints.NotBlank;
 import java.time.LocalDateTime;
+import java.util.Collections;
+import java.util.List;
 import java.util.Map;
-import java.util.HashMap;
 
 /**
  * SQL任务工作流（DAG）管理控制器
  *
  * @author fengzhu
  */
+@Slf4j
 @RestController
 @RequestMapping("/sql-task-workflow")
 @RequiredArgsConstructor
@@ -32,6 +39,7 @@ public class SqlTaskWorkflowController {
     private final TaskSchedulerManager schedulerManager;
     private final WorkflowInstanceService instanceService;
     private final SqlTaskLogService sqlTaskLogService;
+    private final ObjectMapper objectMapper;
 
     @GetMapping("/page")
     public Result<Page<SqlTaskWorkflow>> page(
@@ -112,7 +120,10 @@ public class SqlTaskWorkflowController {
     }
 
     @GetMapping("/{id}/instances")
-    public Result<String> listInstances(@PathVariable Long id) {
+    public Result<Page<InstanceVO>> listInstances(
+            @PathVariable Long id,
+            @RequestParam(defaultValue = "1") int pageNum,
+            @RequestParam(defaultValue = "20") int pageSize) {
         SqlTaskWorkflow workflow = workflowService.getById(id);
         if (workflow == null) {
             return Result.error("工作流不存在");
@@ -120,8 +131,39 @@ public class SqlTaskWorkflowController {
         if (workflow.getDsProcessCode() == null && workflow.getSchedulerxDagId() == null) {
             return Result.error("工作流未同步到调度器");
         }
-        String instances = schedulerManager.listWorkflowInstances(workflow);
-        return Result.success(instances);
+        String json = schedulerManager.listWorkflowInstances(workflow, pageNum, pageSize);
+        return parseInstancePage(json, pageNum, pageSize);
+    }
+
+    @GetMapping("/instances/{instanceId}")
+    public Result<InstanceVO> instanceDetail(@PathVariable String instanceId) {
+        String json = schedulerManager.getInstanceDetail(instanceId);
+        if (json == null || json.isEmpty()) {
+            return Result.error("实例不存在或查询失败");
+        }
+        try {
+            InstanceVO vo = objectMapper.readValue(json, InstanceVO.class);
+            return Result.success(vo);
+        } catch (Exception e) {
+            log.error("解析实例详情失败: instanceId={}", instanceId, e);
+            return Result.error("解析实例数据失败");
+        }
+    }
+
+    @GetMapping("/instances/{instanceId}/tasks")
+    public Result<List<TaskInstanceVO>> instanceTasks(@PathVariable String instanceId) {
+        String json = schedulerManager.getInstanceTasks(instanceId);
+        if (json == null || json.isEmpty()) {
+            return Result.error("实例不存在或查询失败");
+        }
+        try {
+            List<TaskInstanceVO> list = objectMapper.readValue(json,
+                    new TypeReference<List<TaskInstanceVO>>() {});
+            return Result.success(list);
+        } catch (Exception e) {
+            log.error("解析实例任务列表失败: instanceId={}", instanceId, e);
+            return Result.error("解析任务数据失败");
+        }
     }
 
     @GetMapping("/{id}/dag")
@@ -173,6 +215,38 @@ public class SqlTaskWorkflowController {
     public Result<Void> retryInstance(@PathVariable String instanceId) {
         schedulerManager.retryWorkflowInstance(instanceId);
         return Result.success();
+    }
+
+    /**
+     * 解析 SchedulerX / DS 返回的实例分页 JSON
+     */
+    private Result<Page<InstanceVO>> parseInstancePage(String json, int pageNum, int pageSize) {
+        if (json == null || json.isEmpty()) {
+            Page<InstanceVO> emptyPage = new Page<>(pageNum, pageSize);
+            emptyPage.setRecords(Collections.emptyList());
+            emptyPage.setTotal(0);
+            return Result.success(emptyPage);
+        }
+        try {
+            InstancePageWrapper wrapper = objectMapper.readValue(json, InstancePageWrapper.class);
+            List<InstanceVO> records = wrapper.getRecords() != null ? wrapper.getRecords() : Collections.emptyList();
+            long total = wrapper.getTotal() != null ? wrapper.getTotal() : 0L;
+            Page<InstanceVO> page = new Page<>(pageNum, pageSize);
+            page.setRecords(records);
+            page.setTotal(total);
+            return Result.success(page);
+        } catch (Exception e) {
+            log.error("解析实例列表失败, json={}", json, e);
+            return Result.error("解析实例数据失败");
+        }
+    }
+
+    @Data
+    private static class InstancePageWrapper {
+        private List<InstanceVO> records;
+        private Long total;
+        private Long current;
+        private Long size;
     }
 
     @Data

@@ -39,6 +39,8 @@ public class TaskInstance {
 
     private Integer durationMs;
 
+    private Integer timeoutSeconds;
+
     private String callbackUrl;
 
     private String requestBody;

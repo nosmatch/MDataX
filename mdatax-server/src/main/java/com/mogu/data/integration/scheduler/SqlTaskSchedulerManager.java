@@ -1,10 +1,12 @@
 package com.mogu.data.integration.scheduler;
 
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mogu.data.integration.entity.SqlTask;
 import com.mogu.data.integration.util.CronUtils;
 import com.mogu.data.integration.entity.SyncTask;
 import com.mogu.data.integration.service.SqlTaskEngineService;
 import com.mogu.data.integration.service.SqlTaskService;
+import com.mogu.data.integration.service.TaskExecutionService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -16,6 +18,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ScheduledFuture;
 
@@ -32,14 +35,23 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
     private final ThreadPoolTaskScheduler taskScheduler;
     private final SqlTaskService sqlTaskService;
     private final SqlTaskEngineService sqlTaskEngineService;
+    private final TaskExecutionService taskExecutionService;
+    private final com.mogu.data.integration.mapper.TaskMapper taskMapper;
+    private final com.mogu.data.integration.mapper.SqlTaskMapper sqlTaskMapper;
 
     public SqlTaskSchedulerManager(
             @Qualifier("sqlTaskScheduler") ThreadPoolTaskScheduler taskScheduler,
             SqlTaskService sqlTaskService,
-            SqlTaskEngineService sqlTaskEngineService) {
+            SqlTaskEngineService sqlTaskEngineService,
+            TaskExecutionService taskExecutionService,
+            com.mogu.data.integration.mapper.TaskMapper taskMapper,
+            com.mogu.data.integration.mapper.SqlTaskMapper sqlTaskMapper) {
         this.taskScheduler = taskScheduler;
         this.sqlTaskService = sqlTaskService;
         this.sqlTaskEngineService = sqlTaskEngineService;
+        this.taskExecutionService = taskExecutionService;
+        this.taskMapper = taskMapper;
+        this.sqlTaskMapper = sqlTaskMapper;
     }
 
     private final Map<Long, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
@@ -50,16 +62,30 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
     @EventListener(ApplicationReadyEvent.class)
     public void initOnStartup() {
         log.info("初始化SQL任务调度...");
-        List<SqlTask> tasks = sqlTaskService.lambdaQuery()
-                .eq(SqlTask::getDeleted, 0)
-                .eq(SqlTask::getStatus, 1)
-                .list();
-        for (SqlTask task : tasks) {
-            if (task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
-                schedule(task.getId(), task.getCronExpression());
+        long page = 1;
+        long size = 500;
+        long totalLoaded = 0;
+        while (true) {
+            Page<SqlTask> pageResult = sqlTaskService.lambdaQuery()
+                    .eq(SqlTask::getDeleted, 0)
+                    .eq(SqlTask::getStatus, 1)
+                    .page(new Page<>(page, size));
+            List<SqlTask> tasks = pageResult.getRecords();
+            if (tasks == null || tasks.isEmpty()) {
+                break;
             }
+            for (SqlTask task : tasks) {
+                if (task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
+                    schedule(task.getId(), task.getCronExpression());
+                }
+            }
+            totalLoaded += tasks.size();
+            if (!pageResult.hasNext()) {
+                break;
+            }
+            page++;
         }
-        log.info("已加载 {} 个定时SQL任务", tasks.size());
+        log.info("已加载 {} 个定时SQL任务", totalLoaded);
     }
 
     /**
@@ -181,17 +207,30 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
 
     @Override
     public String triggerSqlTask(SqlTask task) {
-        throw new UnsupportedOperationException("本地调度器不支持手动触发");
+        log.info("手动触发SQL任务: taskId={}", task.getId());
+        String executionId = generateExecutionId();
+        taskExecutionService.recordManualExecution(
+                task.getId(), executionId, executionId, task.getCreateUserId());
+        taskScheduler.execute(() -> {
+            try {
+                sqlTaskEngineService.execute(task.getId());
+                taskExecutionService.finishExecution(executionId, null, null);
+            } catch (Exception e) {
+                log.error("手动触发SQL任务失败: taskId={}, executionId={}", task.getId(), executionId, e);
+                taskExecutionService.failExecution(executionId, e.getMessage());
+            }
+        });
+        return executionId;
     }
 
     @Override
     public String triggerSyncTask(SyncTask task) {
-        throw new UnsupportedOperationException("本地调度器不支持手动触发");
+        throw new UnsupportedOperationException("SqlTaskSchedulerManager 不支持同步任务手动触发");
     }
 
     @Override
     public String triggerWorkflow(com.mogu.data.integration.entity.SqlTaskWorkflow workflow) {
-        throw new UnsupportedOperationException("本地调度器不支持手动触发");
+        throw new UnsupportedOperationException("本地调度器不支持 Workflow 手动触发");
     }
 
     @Override
@@ -210,8 +249,70 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
     }
 
     @Override
-    public String listWorkflowInstances(com.mogu.data.integration.entity.SqlTaskWorkflow workflow) {
+    public String listWorkflowInstances(com.mogu.data.integration.entity.SqlTaskWorkflow workflow, int pageNum, int pageSize) {
         throw new UnsupportedOperationException("本地调度器不支持实例查询");
+    }
+
+    @Override
+    public String getInstanceDetail(String instanceId) {
+        throw new UnsupportedOperationException("本地调度器不支持实例查询");
+    }
+
+    @Override
+    public String getInstanceTasks(String instanceId) {
+        throw new UnsupportedOperationException("本地调度器不支持实例查询");
+    }
+
+    @Override
+    public String getSqlTaskInstances(Long taskId, int pageNum, int pageSize) {
+        throw new UnsupportedOperationException("本地调度器不支持实例查询");
+    }
+
+    @Override
+    public String getSyncTaskInstances(Long taskId, int pageNum, int pageSize) {
+        throw new UnsupportedOperationException("本地调度器不支持实例查询");
+    }
+
+    // ==================== 统一任务调度实现 ====================
+
+    @Override
+    public void scheduleTask(com.mogu.data.integration.entity.Task task) {
+        if ("SQL".equals(task.getTaskType())) {
+            SqlTask sqlTask = sqlTaskMapper.selectById(task.getId());
+            if (sqlTask != null) {
+                scheduleSqlTask(sqlTask);
+            }
+        }
+    }
+
+    @Override
+    public void cancelTask(Long taskId) {
+        SqlTask sqlTask = sqlTaskMapper.selectById(taskId);
+        if (sqlTask != null) {
+            cancelSqlTask(taskId);
+        }
+    }
+
+    @Override
+    public void rescheduleTask(com.mogu.data.integration.entity.Task task) {
+        cancelTask(task.getId());
+        scheduleTask(task);
+    }
+
+    @Override
+    public String triggerTask(com.mogu.data.integration.entity.Task task) {
+        if (task == null) {
+            throw new IllegalArgumentException("任务不能为空");
+        }
+        SqlTask sqlTask = sqlTaskMapper.selectById(task.getId());
+        if (sqlTask == null) {
+            throw new IllegalArgumentException("SQL任务不存在: " + task.getId());
+        }
+        return triggerSqlTask(sqlTask);
+    }
+
+    private String generateExecutionId() {
+        return "EXEC-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
     }
 
 }

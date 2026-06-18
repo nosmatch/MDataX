@@ -24,7 +24,8 @@ public class StateMachine {
             case WAITING_UPSTREAM:
                 return event == EventType.START;
             case RUNNING:
-                return event == EventType.SUCCESS || event == EventType.FAILURE || event == EventType.TIMEOUT;
+                return event == EventType.SUCCESS || event == EventType.FAILURE
+                        || event == EventType.TIMEOUT || event == EventType.KILL;
             default:
                 return false;
         }
@@ -46,6 +47,8 @@ public class StateMachine {
                 return TaskInstanceStatus.FAILURE;
             case TIMEOUT:
                 return TaskInstanceStatus.TIMEOUT;
+            case KILL:
+                return TaskInstanceStatus.KILLED;
             default:
                 return from;
         }
@@ -82,6 +85,10 @@ public class StateMachine {
                     break;
                 case "TIMEOUT":
                     hasTimeout = true;
+                    allSuccess = false;
+                    break;
+                case "KILLED":
+                    hasFailure = true;
                     allSuccess = false;
                     break;
                 case "SUCCESS":

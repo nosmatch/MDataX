@@ -76,6 +76,37 @@ public interface TaskSchedulerManager {
      */
     void rescheduleSqlTask(SqlTask task);
 
+    // ==================== 统一任务调度（新增） ====================
+
+    /**
+     * 注册统一任务的定时调度。
+     *
+     * @param task 统一任务
+     */
+    void scheduleTask(com.mogu.data.integration.entity.Task task);
+
+    /**
+     * 取消统一任务的定时调度。
+     *
+     * @param taskId 任务ID
+     */
+    void cancelTask(Long taskId);
+
+    /**
+     * 重新调度统一任务（先取消再注册）。
+     *
+     * @param task 统一任务
+     */
+    void rescheduleTask(com.mogu.data.integration.entity.Task task);
+
+    /**
+     * 手动触发统一任务。
+     *
+     * @param task 统一任务
+     * @return 实例标识符
+     */
+    String triggerTask(com.mogu.data.integration.entity.Task task);
+
     // ==================== Workflow（DAG）调度 ====================
 
     /**
@@ -159,7 +190,47 @@ public interface TaskSchedulerManager {
      * 查询工作流实例列表。
      *
      * @param workflow SQL 任务工作流
+     * @param pageNum  页码
+     * @param pageSize 页大小
      * @return 实例列表 JSON 字符串
      */
-    String listWorkflowInstances(SqlTaskWorkflow workflow);
+    String listWorkflowInstances(SqlTaskWorkflow workflow, int pageNum, int pageSize);
+
+    // ==================== 实例查询 ====================
+
+    /**
+     * 查询实例详情。
+     *
+     * @param instanceId 实例标识符
+     * @return 实例详情 JSON 字符串
+     */
+    String getInstanceDetail(String instanceId);
+
+    /**
+     * 查询实例的任务列表。
+     *
+     * @param instanceId 实例标识符
+     * @return 任务列表 JSON 字符串
+     */
+    String getInstanceTasks(String instanceId);
+
+    /**
+     * 查询 SQL 任务实例列表。
+     *
+     * @param taskId SQL 任务 ID
+     * @param pageNum 页码
+     * @param pageSize 页大小
+     * @return 实例列表 JSON 字符串
+     */
+    String getSqlTaskInstances(Long taskId, int pageNum, int pageSize);
+
+    /**
+     * 查询同步任务实例列表。
+     *
+     * @param taskId 同步任务 ID
+     * @param pageNum 页码
+     * @param pageSize 页大小
+     * @return 实例列表 JSON 字符串
+     */
+    String getSyncTaskInstances(Long taskId, int pageNum, int pageSize);
 }

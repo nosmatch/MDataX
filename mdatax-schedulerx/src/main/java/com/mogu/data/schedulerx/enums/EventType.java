@@ -10,6 +10,7 @@ public enum EventType {
     START,
     SUCCESS,
     FAILURE,
-    TIMEOUT
+    TIMEOUT,
+    KILL
 
 }

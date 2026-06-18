@@ -41,6 +41,9 @@ public class DagInstance {
 
     private Integer retryCount;
 
+    @com.baomidou.mybatisplus.annotation.Version
+    private Integer version;
+
     private LocalDateTime createTime;
 
     private LocalDateTime updateTime;

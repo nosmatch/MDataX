@@ -77,6 +77,12 @@ public class DagEngine {
             return;
         }
 
+        if (!DagInstanceStatus.PENDING.name().equals(dagInstance.getStatus())) {
+            log.warn("[DagEngine] DAG 实例状态非 PENDING，忽略启动: instanceId={}, status={}",
+                    instanceId, dagInstance.getStatus());
+            return;
+        }
+
         // 加载 DAG 定义
         String dagId = dagInstance.getDagId();
         Dag dag = loadDag(dagId);
@@ -88,10 +94,23 @@ public class DagEngine {
             return;
         }
 
-        // 状态机: PENDING -> RUNNING
-        dagInstance.setStatus(DagInstanceStatus.RUNNING.name());
-        dagInstance.setStartTime(LocalDateTime.now());
-        dagInstanceService.updateById(dagInstance);
+        // 状态机: PENDING -> RUNNING，使用乐观锁防止并发启动
+        boolean updated = dagInstanceService.lambdaUpdate()
+                .eq(DagInstance::getInstanceId, instanceId)
+                .eq(DagInstance::getStatus, DagInstanceStatus.PENDING.name())
+                .set(DagInstance::getStatus, DagInstanceStatus.RUNNING.name())
+                .set(DagInstance::getStartTime, LocalDateTime.now())
+                .set(DagInstance::getUpdateTime, LocalDateTime.now())
+                .update();
+        if (!updated) {
+            log.warn("[DagEngine] DAG 实例启动冲突，可能已被其他线程启动: {}", instanceId);
+            return;
+        }
+
+        // 重新加载最新状态
+        dagInstance = dagInstanceService.lambdaQuery()
+                .eq(DagInstance::getInstanceId, instanceId)
+                .one();
 
         // 拓扑解析，获取根任务
         Map<String, String> taskStatusMap = new HashMap<>();
@@ -101,6 +120,7 @@ public class DagEngine {
             log.warn("[DagEngine] DAG 实例 {} 没有就绪任务", instanceId);
             dagInstance.setStatus(DagInstanceStatus.SUCCESS.name());
             dagInstance.setEndTime(LocalDateTime.now());
+            dagInstance.setUpdateTime(LocalDateTime.now());
             dagInstanceService.updateById(dagInstance);
             return;
         }
@@ -138,8 +158,13 @@ public class DagEngine {
             return;
         }
 
-        // 更新任务实例状态
+        // 更新任务实例状态，使用状态机转换前校验当前状态是否已变化
         TaskInstanceStatus currentStatus = TaskInstanceStatus.valueOf(taskInstance.getStatus());
+        if (!stateMachine.canTransition(currentStatus, event.getType())) {
+            log.warn("[DagEngine] 任务状态已变化或事件不匹配，忽略本次回调: taskInstanceId={}, currentStatus={}, event={}",
+                    event.getTaskInstanceId(), currentStatus, event.getType());
+            return;
+        }
         TaskInstanceStatus newStatus = stateMachine.transition(currentStatus, event.getType());
         taskInstance.setStatus(newStatus.name());
         taskInstance.setEndTime(LocalDateTime.now());
@@ -319,6 +344,7 @@ public class DagEngine {
         taskInstance.setStatus(TaskInstanceStatus.RUNNING.name());
         taskInstance.setAttemptNumber(attemptNumber);
         taskInstance.setStartTime(LocalDateTime.now());
+        taskInstance.setTimeoutSeconds(dagTask.getTimeoutSeconds());
         taskInstance.setCreateTime(LocalDateTime.now());
         taskInstance.setUpdateTime(LocalDateTime.now());
 
@@ -453,19 +479,21 @@ public class DagEngine {
             return;
         }
 
-        // 停止所有 RUNNING 任务
-        List<TaskInstance> runningTasks = taskInstanceService.lambdaQuery()
-                .eq(TaskInstance::getDagInstanceId, instanceId)
-                .eq(TaskInstance::getStatus, TaskInstanceStatus.RUNNING.name())
-                .list();
-        for (TaskInstance task : runningTasks) {
-            task.setStatus(TaskInstanceStatus.FAILURE.name());
-            task.setEndTime(LocalDateTime.now());
-            taskInstanceService.updateById(task);
-        }
+        // 停止所有 RUNNING 任务（原子更新），并二次扫描确认无遗漏
+        int affected = 0;
+        do {
+            affected = taskInstanceService.lambdaUpdate()
+                    .eq(TaskInstance::getDagInstanceId, instanceId)
+                    .eq(TaskInstance::getStatus, TaskInstanceStatus.RUNNING.name())
+                    .set(TaskInstance::getStatus, TaskInstanceStatus.KILLED.name())
+                    .set(TaskInstance::getEndTime, LocalDateTime.now())
+                    .set(TaskInstance::getUpdateTime, LocalDateTime.now())
+                    .update() ? 1 : 0;
+        } while (affected > 0);
 
         dagInstance.setStatus(DagInstanceStatus.STOPPED.name());
         dagInstance.setEndTime(LocalDateTime.now());
+        dagInstance.setUpdateTime(LocalDateTime.now());
         dagInstanceService.updateById(dagInstance);
     }
 
@@ -490,10 +518,10 @@ public class DagEngine {
             return;
         }
 
-        // 找到所有失败或超时的任务
+        // 找到所有失败、超时或已终止的任务
         List<TaskInstance> failedTasks = taskInstanceService.lambdaQuery()
                 .eq(TaskInstance::getDagInstanceId, instanceId)
-                .in(TaskInstance::getStatus, Arrays.asList("FAILURE", "TIMEOUT", "STOPPED"))
+                .in(TaskInstance::getStatus, Arrays.asList("FAILURE", "TIMEOUT", "KILLED"))
                 .list();
 
         if (failedTasks.isEmpty()) {

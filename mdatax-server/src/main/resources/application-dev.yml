@@ -49,6 +49,10 @@ schedulerx:
   callback-url: http://localhost:7081
   # 回调密钥，用于 SchedulerX 触发 MDataX 任务时的身份校验（与 DS 共用同一密钥）
   callback-secret: mdatax-dev-secret-change-in-production
+  # 任务执行延迟秒数（仅 SchedulerX 模式），用于模拟长任务验证 DAG 执行过程
+  # 设为 0 表示不延迟；验证时可临时改为 30 或 60
+  task:
+    delay-seconds: 10
 
 # DolphinScheduler 配置
 dolphinscheduler:

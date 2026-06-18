@@ -2,86 +2,156 @@
   <div class="task-page">
     <div class="page-header">
       <h2>任务管理</h2>
+      <div class="header-actions">
+        <el-button type="primary" @click="openCreateDialog">
+          <el-icon><Plus /></el-icon> 新建任务
+        </el-button>
+      </div>
     </div>
 
-    <div class="toolbar">
-      <el-input
-        v-model="keyword"
-        placeholder="搜索任务名称"
-        clearable
-        style="width: 300px"
-        @keyup.enter="fetchTasks"
-      >
-        <template #append>
-          <el-button @click="fetchTasks">
-            <el-icon><Search /></el-icon>
-          </el-button>
-        </template>
-      </el-input>
-      <el-button type="primary" @click="openCreateDialog">
-        <el-icon><Plus /></el-icon> 新建任务
-      </el-button>
+    <!-- 筛选区 -->
+    <div class="filter-section">
+      <el-row :gutter="16">
+        <el-col :span="4">
+          <el-select v-model="filters.taskType" placeholder="任务类型" clearable @change="fetchTasks">
+            <el-option label="全部" value="" />
+            <el-option :label="TASK_TYPE_LABEL[TASK_TYPE.SQL]" :value="TASK_TYPE.SQL" />
+            <el-option :label="TASK_TYPE_LABEL[TASK_TYPE.SYNC]" :value="TASK_TYPE.SYNC" />
+          </el-select>
+        </el-col>
+        <el-col :span="3">
+          <el-select v-model="filters.status" placeholder="状态" clearable @change="fetchTasks">
+            <el-option label="全部" value="" />
+            <el-option :label="TASK_STATUS_LABEL[TASK_STATUS.ENABLED]" :value="TASK_STATUS.ENABLED" />
+            <el-option :label="TASK_STATUS_LABEL[TASK_STATUS.DISABLED]" :value="TASK_STATUS.DISABLED" />
+            <el-option :label="TASK_STATUS_LABEL[TASK_STATUS.DRAFT]" :value="TASK_STATUS.DRAFT" />
+          </el-select>
+        </el-col>
+        <el-col :span="3">
+          <el-select v-model="filters.lastExecutionStatus" placeholder="最近执行" clearable @change="fetchTasks">
+            <el-option label="全部" value="" />
+            <el-option label="成功" :value="EXECUTION_STATUS.SUCCESS" />
+            <el-option label="失败" :value="EXECUTION_STATUS.FAILED" />
+            <el-option label="运行中" :value="EXECUTION_STATUS.RUNNING" />
+            <el-option label="超时" :value="EXECUTION_STATUS.TIMEOUT" />
+            <el-option label="已终止" :value="EXECUTION_STATUS.KILLED" />
+            <el-option label="未执行" value="NONE" />
+          </el-select>
+        </el-col>
+        <el-col :span="4">
+          <el-select v-model="filters.priority" placeholder="优先级" clearable @change="fetchTasks">
+            <el-option label="全部" value="" />
+            <el-option label="高优先级 (7-10)" value="7" />
+            <el-option label="中优先级 (4-6)" value="4" />
+            <el-option label="低优先级 (1-3)" value="1" />
+          </el-select>
+        </el-col>
+        <el-col :span="4">
+          <el-input
+            v-model="filters.keyword"
+            placeholder="搜索任务名称/编码/标签"
+            clearable
+            @keyup.enter="fetchTasks"
+          >
+            <template #append>
+              <el-button @click="fetchTasks">
+                <el-icon><Search /></el-icon>
+              </el-button>
+            </template>
+          </el-input>
+        </el-col>
+        <el-col :span="6">
+          <el-date-picker
+            v-model="filters.dateRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            @change="fetchTasks"
+          />
+        </el-col>
+      </el-row>
     </div>
 
-    <el-table :data="taskList" v-loading="loading" stripe>
-      <el-table-column prop="taskName" label="任务名称" min-width="180" />
-      <el-table-column prop="description" label="任务描述" min-width="160">
+    <!-- 任务列表 -->
+    <el-table :data="taskList" v-loading="loading" stripe @row-click="handleRowClick">
+      <el-table-column type="selection" width="55" align="center" />
+      <el-table-column prop="taskCode" label="任务编码" width="140">
         <template #default="{ row }">
-          {{ row.description || '-' }}
+          <el-tag size="small" type="info">{{ row.taskCode }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="cronExpression" label="Cron表达式" min-width="140">
+      <el-table-column prop="taskName" label="任务名称" min-width="160">
+        <template #default="{ row }">
+          <div style="display: flex; align-items: center; gap: 8px">
+            <span>{{ row.taskName }}</span>
+            <el-tag v-if="row.tags" size="small" type="warning">{{ row.tags }}</el-tag>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column prop="taskType" label="类型" width="80" align="center">
+        <template #default="{ row }">
+          <el-tag :type="TASK_TYPE_TAG_TYPE[row.taskType]" size="small">
+            {{ TASK_TYPE_LABEL[row.taskType] || row.taskType }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="ownerUserName" label="责任人" width="100" />
+      <el-table-column prop="priority" label="优先级" width="80" align="center">
+        <template #default="{ row }">
+          <el-tag :type="getPriorityTagType(row.priority)" size="small">{{ getPriorityLabel(row.priority) }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column prop="cronExpression" label="调度" width="140">
         <template #default="{ row }">
           {{ row.cronExpression || '-' }}
         </template>
       </el-table-column>
-      <el-table-column prop="workflowName" label="所属工作流" min-width="140">
+      <el-table-column prop="status" label="状态" width="80" align="center">
         <template #default="{ row }">
-          {{ getWorkflowName(row.workflowId) || '-' }}
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" label="状态" width="90" align="center">
-        <template #default="{ row }">
-          <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
-            {{ row.status === 1 ? '启用' : '停用' }}
+          <el-tag :type="TASK_STATUS_TAG_TYPE[row.status]" size="small">
+            {{ TASK_STATUS_LABEL[row.status] }}
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="createTime" label="创建时间" min-width="160" />
-      <el-table-column label="操作" width="340" fixed="right">
+      <el-table-column label="最近执行" width="170" align="center">
         <template #default="{ row }">
-          <template v-if="row.canOperate">
-            <el-button
-              type="success"
-              link
-              size="small"
-              :disabled="row.status !== 1"
-              :loading="executingId === row.id"
-              @click="handleTaskExecute(row)"
-            >
-              执行
-            </el-button>
-            <el-button type="info" link size="small" @click="openLogDialog(row)">
-              日志
-            </el-button>
-            <el-button type="success" link size="small" @click="loadTaskToEditor(row)">
-              编辑SQL
-            </el-button>
-            <el-button type="primary" link size="small" @click="handleToggle(row)">
-              {{ row.status === 1 ? '停用' : '启用' }}
-            </el-button>
-            <el-button type="primary" link size="small" @click="handleEdit(row)">
-              编辑
-            </el-button>
-            <el-button type="danger" link size="small" @click="handleDelete(row)">
-              删除
-            </el-button>
-          </template>
-          <template v-else>
-            <el-button type="info" link size="small" @click="openLogDialog(row)">
-              日志
-            </el-button>
-          </template>
+          <LastExecutionBadge :status="row.lastExecutionStatus" :time="row.lastExecutionTime" />
+        </template>
+      </el-table-column>
+      <el-table-column label="依赖" width="100" align="center">
+        <template #default="{ row }">
+          <el-button type="info" link size="small" @click.stop="openDetailDrawer(row, 'dependencies')">
+            上{{ row.upstreamCount || 0 }}/下{{ row.downstreamCount || 0 }}
+          </el-button>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="280" fixed="right">
+        <template #default="{ row }">
+          <el-button
+            type="success"
+            link
+            size="small"
+            :disabled="row.status !== TASK_STATUS.ENABLED"
+            :loading="executingId === row.id"
+            @click.stop="handleExecute(row)"
+          >
+            执行
+          </el-button>
+          <el-button type="primary" link size="small" @click.stop="handleToggle(row)">
+            {{ row.status === TASK_STATUS.ENABLED ? '停用' : '启用' }}
+          </el-button>
+          <el-button type="primary" link size="small" @click.stop="handleEdit(row)">
+            编辑
+          </el-button>
+          <el-button type="info" link size="small" @click.stop="openDetailDrawer(row, 'history')">
+            历史
+          </el-button>
+          <el-button type="danger" link size="small" @click.stop="handleDelete(row)">
+            删除
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -98,255 +168,144 @@
       />
     </div>
 
-    <!-- 执行日志对话框 -->
-    <el-dialog
-      v-model="logDialogVisible"
-      title="执行日志"
-      width="720px"
-      :close-on-click-modal="false"
-    >
-      <el-table :data="logList" v-loading="logLoading" stripe size="small">
-        <el-table-column prop="startTime" label="开始时间" min-width="160" />
-        <el-table-column prop="endTime" label="结束时间" min-width="160" />
-        <el-table-column prop="status" label="状态" width="90" align="center">
-          <template #default="{ row }">
-            <el-tag
-              :type="row.status === 'SUCCESS' ? 'success' : row.status === 'RUNNING' ? 'warning' : 'danger'"
-              size="small"
-            >
-              {{ row.status === 'SUCCESS' ? '成功' : row.status === 'RUNNING' ? '运行中' : '失败' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="message" label="消息" min-width="200" show-overflow-tooltip />
-      </el-table>
-      <div class="pagination-wrapper">
-        <el-pagination
-          v-model:current-page="logPage"
-          v-model:page-size="logSize"
-          :total="logTotal"
-          :page-sizes="[10, 20, 50]"
-          layout="total, sizes, prev, pager, next"
-          @size-change="fetchLogs"
-          @current-change="fetchLogs"
-        />
-      </div>
-    </el-dialog>
+    <!-- 创建/编辑对话框 -->
+    <TaskFormDialog
+      v-model="taskDialogVisible"
+      :task-id="currentTaskId"
+      @saved="fetchTasks"
+    />
 
-    <!-- 保存/新建任务对话框 -->
-    <el-dialog
-      v-model="dialogVisible"
-      :title="isEdit ? '编辑SQL任务' : '新建SQL任务'"
-      width="640px"
+    <!-- 任务详情抽屉 -->
+    <el-drawer
+      v-model="detailDrawerVisible"
+      :title="`任务详情 - ${currentTask?.taskName || ''}`"
+      size="900px"
       :close-on-click-modal="false"
+      @closed="handleDrawerClosed"
     >
-      <el-form ref="formRef" :model="form" :rules="rules" label-width="100px">
-        <el-form-item label="任务名称" prop="taskName">
-          <el-input v-model="form.taskName" placeholder="请输入任务名称" />
-        </el-form-item>
-        <el-form-item label="任务描述" prop="description">
-          <el-input v-model="form.description" placeholder="请输入任务描述" />
-        </el-form-item>
-        <el-form-item label="所属工作流">
-          <el-select
-            v-model="form.workflowId"
-            placeholder="请选择工作流"
-            clearable
-            :disabled="isEdit"
-            style="width: 100%"
-            @change="(val) => { form.dependTaskIds = []; loadWorkflowTasks(val, form.id) }"
+      <template v-if="currentTask">
+        <div class="drawer-header-info">
+          <el-tag :type="TASK_TYPE_TAG_TYPE[currentTask.taskType]" size="small">
+            {{ TASK_TYPE_LABEL[currentTask.taskType] || currentTask.taskType }}
+          </el-tag>
+          <el-tag
+            :type="TASK_STATUS_TAG_TYPE[currentTask.status]"
+            size="small"
           >
-            <el-option
-              v-for="wf in workflows"
-              :key="wf.id"
-              :label="wf.workflowName"
-              :value="wf.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-if="form.workflowId" label="上游依赖">
-          <el-select
-            v-model="form.dependTaskIds"
-            multiple
-            placeholder="选择上游依赖任务"
-            style="width: 100%"
-          >
-            <el-option
-              v-for="t in workflowTasks"
-              :key="t.id + '-' + t.taskType"
-              :label="t.taskName + (t.taskType === 'SYNC' ? ' [同步]' : ' [SQL]')"
-              :value="t.id"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item v-else label="Cron表达式" prop="cronExpression">
-          <CronPicker v-model="form.cronExpression" />
-        </el-form-item>
-        <el-form-item label="SQL内容" prop="sqlContent">
-          <el-input
-            v-model="form.sqlContent"
-            type="textarea"
-            :rows="8"
-            :disabled="isEdit"
-            placeholder="请输入SQL内容"
+            {{ TASK_STATUS_LABEL[currentTask.status] }}
+          </el-tag>
+          <LastExecutionBadge
+            v-if="currentTask.lastExecutionStatus"
+            :status="currentTask.lastExecutionStatus"
+            :time="currentTask.lastExecutionTime"
           />
-          <div v-if="isEdit" style="color: #909399; font-size: 12px; margin-top: 4px">
-            SQL 内容请到 SQL 开发页面编辑
-          </div>
-        </el-form-item>
+          <el-button
+            type="success"
+            size="small"
+            :disabled="currentTask.status !== 1"
+            :loading="drawerExecuting"
+            @click="handleExecuteFromDrawer"
+          >
+            手动执行
+          </el-button>
+          <el-button type="primary" size="small" @click="handleEditFromDrawer">编辑任务</el-button>
+        </div>
 
-        <!-- 协作者管理（仅编辑时显示，创建人或管理员可操作） -->
-        <el-form-item
-          label="协作者"
-          v-if="isEdit && (form.createUserId === currentUserId || isAdmin)"
-        >
-          <div style="display: flex; gap: 8px; margin-bottom: 8px; width: 100%">
-            <el-select
-              v-model="selectedCollaboratorId"
-              placeholder="选择用户添加协作者"
-              style="width: 0; flex: 1"
-              clearable
-              filterable
-            >
-              <el-option
-                v-for="u in allUsers"
-                :key="u.id"
-                :label="u.nickname || u.username"
-                :value="u.id"
-              />
-            </el-select>
-            <el-button type="primary" :loading="addingCollaborator" @click="handleAddCollaborator">添加</el-button>
-          </div>
-          <div>
-            <el-tag
-              v-for="c in collaborators"
-              :key="c.id"
-              closable
-              style="margin-right: 8px; margin-bottom: 8px"
-              @close="handleRemoveCollaborator(c)"
-            >
-              {{ c.userName }}
-            </el-tag>
-            <span v-if="collaborators.length === 0" style="color: #909399; font-size: 13px">暂无协作者</span>
-          </div>
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSave">
-          保存
-        </el-button>
+        <el-tabs v-model="activeTab" class="detail-tabs" @tab-change="handleTabChange">
+          <el-tab-pane label="基础配置" name="basic">
+            <TaskBasicConfig :task="currentTask" :detail="currentTaskDetail" />
+          </el-tab-pane>
+          <el-tab-pane label="依赖 DAG" name="dependencies" lazy>
+            <DependencyGraph
+              v-if="detailDrawerVisible"
+              ref="dependencyGraphRef"
+              :task-id="Number(currentTask.id)"
+              @select-task="handleSelectTaskInGraph"
+            />
+          </el-tab-pane>
+          <el-tab-pane label="执行历史" name="history">
+            <ExecutionHistoryPanel
+              :key="currentTask.id"
+              :task-id="Number(currentTask.id)"
+              embedded
+            />
+          </el-tab-pane>
+        </el-tabs>
       </template>
-    </el-dialog>
+    </el-drawer>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Search } from '@element-plus/icons-vue'
 import request from '../utils/request.js'
-import CronPicker from '../components/CronPicker.vue'
-import { validateCron } from '../utils/cron.js'
+import DependencyGraph from '../components/DependencyGraph.vue'
+import LastExecutionBadge from '../components/LastExecutionBadge.vue'
+import TaskFormDialog from '../components/TaskFormDialog.vue'
+import ExecutionHistoryPanel from '../components/ExecutionHistoryPanel.vue'
+import TaskBasicConfig from '../components/TaskBasicConfig.vue'
 import { useAuthStore } from '../stores/auth.js'
-
-const router = useRouter()
-const authStore = useAuthStore()
-const currentUserId = computed(() => authStore.user?.userId)
-const isAdmin = ref(false)
-
-const loadCurrentUser = async () => {
-  try {
-    const res = await request.get('/user/current')
-    isAdmin.value = res.data.isAdmin || false
-  } catch (e) {
-    // ignore
-  }
-}
+import {
+  TASK_STATUS,
+  TASK_STATUS_LABEL,
+  TASK_STATUS_TAG_TYPE,
+  TASK_TYPE,
+  TASK_TYPE_LABEL,
+  TASK_TYPE_TAG_TYPE,
+  EXECUTION_STATUS,
+  getPriorityLabel,
+  getPriorityTagType
+} from '../utils/task-constants.js'
 
 const loading = ref(false)
-const keyword = ref('')
 const taskList = ref([])
 const page = ref(1)
 const size = ref(10)
 const total = ref(0)
 
-const dialogVisible = ref(false)
-const isEdit = ref(false)
-const saving = ref(false)
-const formRef = ref(null)
+const authStore = useAuthStore()
+const currentUserId = computed(() => authStore.user?.id || null)
+
+const taskDialogVisible = ref(false)
+const currentTaskId = ref(null)
 const executingId = ref(null)
+const drawerExecuting = ref(false)
 
-const logDialogVisible = ref(false)
-const logLoading = ref(false)
-const logList = ref([])
-const logPage = ref(1)
-const logSize = ref(10)
-const logTotal = ref(0)
-const currentLogTaskId = ref(null)
+const detailDrawerVisible = ref(false)
+const currentTask = ref(null)
+const currentTaskDetail = ref(null)
+const activeTab = ref('basic')
+const dependencyGraphRef = ref(null)
 
-const form = reactive({
-  id: null,
-  taskName: '',
-  sqlContent: '',
-  description: '',
-  cronExpression: '',
-  status: 0,
-  workflowId: null,
-  dependTaskIds: [],
-  createUserId: null,
-  createUserName: ''
+const filters = reactive({
+  taskType: '',
+  status: '',
+  lastExecutionStatus: '',
+  priority: '',
+  keyword: '',
+  dateRange: null
 })
-
-const workflows = ref([])
-const workflowTasks = ref([])
-
-// 协作者管理
-const allUsers = ref([])
-const collaborators = ref([])
-const selectedCollaboratorId = ref(null)
-const addingCollaborator = ref(false)
-
-const rules = {
-  taskName: [{ required: true, message: '请输入任务名称', trigger: 'blur' }],
-  sqlContent: [{ required: true, message: '请输入SQL内容', trigger: 'blur' }],
-  description: [{ required: true, message: '请输入任务描述', trigger: 'blur' }],
-  cronExpression: [{
-    validator: (rule, value, callback) => {
-      if (!value) return callback()
-      const { valid, message } = validateCron(value)
-      if (!valid) callback(new Error(message))
-      else callback()
-    }, trigger: 'change'
-  }]
-}
-
-const resetForm = () => {
-  form.id = null
-  form.taskName = ''
-  form.sqlContent = ''
-  form.description = ''
-  form.cronExpression = ''
-  form.status = 0
-  form.workflowId = null
-  form.dependTaskIds = []
-  form.createUserId = null
-  form.createUserName = ''
-  workflowTasks.value = []
-  collaborators.value = []
-  selectedCollaboratorId.value = null
-}
 
 const fetchTasks = async () => {
   loading.value = true
   try {
-    const res = await request.get('/sql-task/page', {
-      params: { page: page.value, size: size.value, keyword: keyword.value }
-    })
-    taskList.value = res.data.records
-    total.value = res.data.total
+    const params = {
+      page: page.value,
+      size: size.value,
+      keyword: filters.keyword,
+      taskType: filters.taskType,
+      status: filters.status ? parseInt(filters.status) : null,
+      priority: filters.priority ? parseInt(filters.priority) : null,
+      startTime: filters.dateRange?.[0],
+      endTime: filters.dateRange?.[1],
+      lastExecutionStatus: filters.lastExecutionStatus || null
+    }
+
+    const res = await request.get('/task/page', { params })
+    taskList.value = res.data.records || []
+    total.value = res.data.total || 0
   } catch (error) {
     ElMessage.error(error.message || '获取数据失败')
   } finally {
@@ -354,108 +313,29 @@ const fetchTasks = async () => {
   }
 }
 
-const loadWorkflows = async () => {
-  try {
-    const res = await request.get('/sql-task-workflow/page', {
-      params: { page: 1, size: 1000 }
-    })
-    workflows.value = res.data.records || []
-  } catch (error) {
-    // silent
-  }
-}
-
-const getWorkflowName = (wfId) => {
-  if (!wfId) return ''
-  const wf = workflows.value.find(w => w.id === wfId)
-  return wf ? wf.workflowName : ''
-}
-
-const loadWorkflowTasks = async (wfId, excludeId) => {
-  workflowTasks.value = []
-  if (!wfId) return
-  try {
-    const [sqlRes, syncRes] = await Promise.all([
-      request.get('/sql-task/page', { params: { page: 1, size: 1000, keyword: '' } }),
-      request.get('/sync-task/page', { params: { page: 1, size: 1000, keyword: '' } })
-    ])
-    const sqlTasks = (sqlRes.data.records || [])
-      .filter(t => t.workflowId === wfId && t.id !== excludeId)
-      .map(t => ({ ...t, taskType: 'SQL' }))
-    const syncTasks = (syncRes.data.records || [])
-      .filter(t => t.workflowId === wfId && t.id !== excludeId)
-      .map(t => ({ ...t, taskType: 'SYNC' }))
-    workflowTasks.value = [...sqlTasks, ...syncTasks]
-  } catch (error) {
-    // silent
-  }
-}
-
-const loadTaskDependencies = async (taskId) => {
-  try {
-    const res = await request.get(`/sql-task/${taskId}/dependencies`)
-    form.dependTaskIds = res.data || []
-  } catch (error) {
-    form.dependTaskIds = []
-  }
+const resetFilters = () => {
+  filters.taskType = ''
+  filters.status = ''
+  filters.lastExecutionStatus = ''
+  filters.priority = ''
+  filters.keyword = ''
+  filters.dateRange = null
+  fetchTasks()
 }
 
 const openCreateDialog = () => {
-  isEdit.value = false
-  resetForm()
-  dialogVisible.value = true
+  currentTaskId.value = null
+  taskDialogVisible.value = true
 }
 
-const handleEdit = async (row) => {
-  isEdit.value = true
-  resetForm()
-  Object.assign(form, row)
-  if (row.workflowId) {
-    await loadWorkflowTasks(row.workflowId, row.id)
-    await loadTaskDependencies(row.id)
-  }
-  if (row.id) {
-    await loadCollaborators(row.id, 'SQL')
-  }
-  dialogVisible.value = true
-}
-
-const loadTaskToEditor = (row) => {
-  router.push({ path: '/development', query: { taskId: row.id } })
-}
-
-const handleSave = async () => {
-  const valid = await formRef.value.validate().catch(() => false)
-  if (!valid) return
-  saving.value = true
-  try {
-    const payload = {
-      taskName: form.taskName,
-      sqlContent: form.sqlContent,
-      description: form.description,
-      cronExpression: form.workflowId ? null : (form.cronExpression || null),
-      workflowId: form.workflowId || null,
-      dependTaskIds: form.workflowId ? (form.dependTaskIds || []) : null
-    }
-    if (isEdit.value) {
-      await request.put(`/sql-task/${form.id}`, payload)
-      ElMessage.success('更新成功')
-    } else {
-      await request.post('/sql-task', payload)
-      ElMessage.success('保存成功')
-    }
-    dialogVisible.value = false
-    fetchTasks()
-  } catch (error) {
-    ElMessage.error(error.message || '保存失败')
-  } finally {
-    saving.value = false
-  }
+const handleEdit = (row) => {
+  currentTaskId.value = row.id
+  taskDialogVisible.value = true
 }
 
 const handleToggle = async (row) => {
   try {
-    await request.post(`/sql-task/${row.id}/toggle`)
+    await request.post(`/task/${row.id}/toggle`)
     ElMessage.success('操作成功')
     fetchTasks()
   } catch (error) {
@@ -463,11 +343,13 @@ const handleToggle = async (row) => {
   }
 }
 
-const handleTaskExecute = async (row) => {
+const handleExecute = async (row) => {
   executingId.value = row.id
   try {
-    await request.post(`/sql-task/${row.id}/execute`)
-    ElMessage.success('执行成功')
+    const res = await request.post(`/task/${row.id}/execute`, {
+      triggerUserId: currentUserId.value
+    })
+    ElMessage.success('执行成功，执行ID: ' + res.data)
     fetchTasks()
   } catch (error) {
     ElMessage.error(error.message || '执行失败')
@@ -476,39 +358,78 @@ const handleTaskExecute = async (row) => {
   }
 }
 
-const openLogDialog = (row) => {
-  currentLogTaskId.value = row.id
-  logPage.value = 1
-  logDialogVisible.value = true
-  fetchLogs()
+const handleExecuteFromDrawer = async () => {
+  if (!currentTask.value) return
+  drawerExecuting.value = true
+  try {
+    const res = await request.post(`/task/${currentTask.value.id}/execute`, {
+      triggerUserId: currentUserId.value
+    })
+    ElMessage.success('执行成功，执行ID: ' + res.data)
+    fetchTasks()
+  } catch (error) {
+    ElMessage.error(error.message || '执行失败')
+  } finally {
+    drawerExecuting.value = false
+  }
 }
 
-const fetchLogs = async () => {
-  if (!currentLogTaskId.value) return
-  logLoading.value = true
+const handleEditFromDrawer = () => {
+  if (!currentTask.value) return
+  currentTaskId.value = currentTask.value.id
+  taskDialogVisible.value = true
+}
+
+const loadTaskDetail = async (taskId) => {
   try {
-    const res = await request.get(`/sql-task/${currentLogTaskId.value}/logs`, {
-      params: { page: logPage.value, size: logSize.value }
-    })
-    logList.value = res.data.records
-    logTotal.value = res.data.total
+    const res = await request.get(`/task/${taskId}`)
+    if (res.code === 200 && res.data) {
+      currentTask.value = res.data.task || res.data
+      currentTaskDetail.value = res.data.detail || null
+    }
   } catch (error) {
-    ElMessage.error(error.message || '获取日志失败')
-  } finally {
-    logLoading.value = false
+    ElMessage.error(error.message || '获取任务详情失败')
+  }
+}
+
+const openDetailDrawer = (row, tab) => {
+  currentTask.value = row
+  currentTaskDetail.value = null
+  activeTab.value = tab || 'basic'
+  detailDrawerVisible.value = true
+  loadTaskDetail(row.id)
+}
+
+const handleRowClick = (row) => {
+  openDetailDrawer(row, 'basic')
+}
+
+const handleDrawerClosed = () => {
+  currentTask.value = null
+  currentTaskDetail.value = null
+  activeTab.value = 'basic'
+}
+
+const handleSelectTaskInGraph = (taskId) => {
+  loadTaskDetail(taskId)
+}
+
+const handleTabChange = (tabName) => {
+  if (tabName === 'dependencies' && dependencyGraphRef.value) {
+    setTimeout(() => {
+      dependencyGraphRef.value.renderDag?.()
+    }, 300)
   }
 }
 
 const handleDelete = (row) => {
-  if (row.status === 1) {
-    ElMessage.warning('启用状态的任务不能删除，请先停用')
-    return
-  }
   ElMessageBox.confirm(`确定删除任务 "${row.taskName}" 吗？`, '提示', {
-    confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning'
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning'
   }).then(async () => {
     try {
-      await request.delete(`/sql-task/${row.id}`)
+      await request.delete(`/task/${row.id}`)
       ElMessage.success('删除成功')
       fetchTasks()
     } catch (error) {
@@ -517,62 +438,8 @@ const handleDelete = (row) => {
   }).catch(() => {})
 }
 
-// ===== 协作者管理 =====
-const loadAllUsers = async () => {
-  try {
-    const res = await request.get('/user/page', { params: { page: 1, size: 1000 } })
-    allUsers.value = (res.data.records || []).filter(u => u.id !== currentUserId.value)
-  } catch (error) {
-    // silent
-  }
-}
-
-const loadCollaborators = async (taskId, taskType) => {
-  try {
-    const res = await request.get(`/task-collaborator/${taskId}/${taskType}`)
-    collaborators.value = res.data || []
-  } catch (error) {
-    collaborators.value = []
-  }
-}
-
-const handleAddCollaborator = async () => {
-  if (!selectedCollaboratorId.value) {
-    ElMessage.warning('请选择用户')
-    return
-  }
-  addingCollaborator.value = true
-  try {
-    await request.post('/task-collaborator', {
-      taskId: form.id,
-      taskType: 'SQL',
-      userId: selectedCollaboratorId.value
-    })
-    ElMessage.success('添加成功')
-    selectedCollaboratorId.value = null
-    await loadCollaborators(form.id, 'SQL')
-  } catch (error) {
-    ElMessage.error(error.response?.data?.message || '添加失败')
-  } finally {
-    addingCollaborator.value = false
-  }
-}
-
-const handleRemoveCollaborator = async (c) => {
-  try {
-    await request.delete(`/task-collaborator/${c.id}`)
-    ElMessage.success('移除成功')
-    await loadCollaborators(form.id, 'SQL')
-  } catch (error) {
-    ElMessage.error(error.response?.data?.message || '移除失败')
-  }
-}
-
 onMounted(() => {
   fetchTasks()
-  loadWorkflows()
-  loadAllUsers()
-  loadCurrentUser()
 })
 </script>
 
@@ -580,26 +447,47 @@ onMounted(() => {
 .task-page {
   padding-bottom: 20px;
 }
+
 .page-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
 }
+
 .page-header h2 {
   margin: 0;
   font-size: 20px;
   font-weight: 600;
 }
-.toolbar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+
+.filter-section {
   margin-bottom: 16px;
+  padding: 16px;
+  background: #f5f7fa;
+  border-radius: 4px;
 }
+
 .pagination-wrapper {
   margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+}
+
+.drawer-header-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #ebeef5;
+}
+
+.detail-tabs :deep(.el-tabs__content) {
+  padding-top: 8px;
+}
+
+:deep(.el-table__row) {
+  cursor: pointer;
 }
 </style>

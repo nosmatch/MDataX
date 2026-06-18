@@ -1,5 +1,6 @@
 package com.mogu.data.schedulerx.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import lombok.Data;
 
 import java.time.LocalDateTime;
@@ -26,8 +27,10 @@ public class TaskInstanceResponse {
 
     private Integer attemptNumber;
 
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime startTime;
 
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime endTime;
 
     private Integer durationMs;
@@ -38,6 +41,7 @@ public class TaskInstanceResponse {
 
     private String errorMsg;
 
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime createTime;
 
 }

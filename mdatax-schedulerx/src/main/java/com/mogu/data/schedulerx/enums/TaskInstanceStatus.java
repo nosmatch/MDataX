@@ -13,6 +13,7 @@ public enum TaskInstanceStatus {
     SUCCESS("成功"),
     FAILURE("失败"),
     TIMEOUT("超时"),
+    KILLED("已终止"),
     SKIPPED("已跳过");
 
     private final String label;

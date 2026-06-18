@@ -43,6 +43,7 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
     private final SqlTaskDependencyMapper sqlTaskDependencyMapper;
     private final SqlTaskWorkflowMapper sqlTaskWorkflowMapper;
     private final com.mogu.data.integration.service.WorkflowInstanceService workflowInstanceService;
+    private final com.mogu.data.integration.mapper.TaskMapper taskMapper;
 
     @Override
     public void scheduleSyncTask(SyncTask task) {
@@ -247,11 +248,31 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
     }
 
     @Override
-    public String listWorkflowInstances(SqlTaskWorkflow workflow) {
+    public String listWorkflowInstances(SqlTaskWorkflow workflow, int pageNum, int pageSize) {
         if (workflow == null || workflow.getDsProcessCode() == null) {
             return null;
         }
         return dsClient.listProcessInstances(workflow.getDsProcessCode());
+    }
+
+    @Override
+    public String getInstanceDetail(String instanceId) {
+        throw new UnsupportedOperationException("DolphinScheduler 暂不支持实例详情查询");
+    }
+
+    @Override
+    public String getInstanceTasks(String instanceId) {
+        throw new UnsupportedOperationException("DolphinScheduler 暂不支持实例任务列表查询");
+    }
+
+    @Override
+    public String getSqlTaskInstances(Long taskId, int pageNum, int pageSize) {
+        throw new UnsupportedOperationException("DolphinScheduler 暂不支持任务实例列表查询");
+    }
+
+    @Override
+    public String getSyncTaskInstances(Long taskId, int pageNum, int pageSize) {
+        throw new UnsupportedOperationException("DolphinScheduler 暂不支持任务实例列表查询");
     }
 
     // ==================== Workflow 内部方法 ====================
@@ -447,6 +468,80 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
         } catch (Exception e) {
             log.error("DS 工作流删除失败: taskId={}, processCode={}", taskId, processCode, e);
         }
+    }
+
+    // ==================== 统一任务调度实现 ====================
+
+    @Override
+    public void scheduleTask(com.mogu.data.integration.entity.Task task) {
+        if ("SQL".equals(task.getTaskType())) {
+            scheduleSqlTaskById(task.getId(), task.getTaskName(), task.getCronExpression(),
+                    task.getDsProcessCode(), task.getDsScheduleId(), task.getDsTaskCode());
+        } else if ("SYNC".equals(task.getTaskType())) {
+            scheduleSyncTaskById(task.getId(), task.getTaskName(), task.getCronExpression(),
+                    task.getDsProcessCode(), task.getDsScheduleId(), task.getDsTaskCode());
+        }
+    }
+
+    @Override
+    public void cancelTask(Long taskId) {
+        // 通过taskCode查找任务类型
+        com.mogu.data.integration.entity.Task task = taskMapper.selectById(taskId);
+        if (task == null) {
+            return;
+        }
+        if ("SQL".equals(task.getTaskType())) {
+            cancelSqlTaskById(task.getDsProcessCode(), task.getDsScheduleId());
+        } else if ("SYNC".equals(task.getTaskType())) {
+            cancelSyncTaskById(task.getDsProcessCode(), task.getDsScheduleId());
+        }
+    }
+
+    @Override
+    public void rescheduleTask(com.mogu.data.integration.entity.Task task) {
+        cancelTask(task.getId());
+        scheduleTask(task);
+    }
+
+    @Override
+    public String triggerTask(com.mogu.data.integration.entity.Task task) {
+        if (task == null || task.getDsProcessCode() == null) {
+            return null;
+        }
+        Long instanceId = dsClient.startProcessInstance(task.getDsProcessCode());
+        return instanceId != null ? String.valueOf(instanceId) : null;
+    }
+
+    // ==================== 辅助方法 ====================
+
+    private void scheduleSqlTaskById(Long taskId, String taskName, String cronExpression,
+                                     Long existProcessCode, Integer existScheduleId, Long existTaskCode) {
+        SqlTask sqlTask = sqlTaskMapper.selectById(taskId);
+        if (sqlTask != null) {
+            scheduleSqlTask(sqlTask);
+        }
+    }
+
+    private void scheduleSyncTaskById(Long taskId, String taskName, String cronExpression,
+                                      Long existProcessCode, Integer existScheduleId, Long existTaskCode) {
+        SyncTask syncTask = syncTaskMapper.selectById(taskId);
+        if (syncTask != null) {
+            scheduleSyncTask(syncTask);
+        }
+    }
+
+    private void cancelSqlTaskById(Long processCode, Integer scheduleId) {
+        if (processCode == null) {
+            return;
+        }
+        cancelByTask(processCode, scheduleId);
+    }
+
+    private void cancelSyncTaskById(Long processCode, Integer scheduleId) {
+        if (processCode == null) {
+            return;
+        }
+        cancelByTask(processCode, scheduleId);
     }
 
     @Getter

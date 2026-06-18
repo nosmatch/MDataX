@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS sx_task_instance (
     start_time DATETIME DEFAULT NULL COMMENT '开始时间',
     end_time DATETIME DEFAULT NULL COMMENT '结束时间',
     duration_ms INT DEFAULT NULL COMMENT '耗时（毫秒）',
+    timeout_seconds INT DEFAULT NULL COMMENT '超时时间（秒）',
     callback_url VARCHAR(512) DEFAULT NULL COMMENT '回调地址',
     request_body TEXT DEFAULT NULL COMMENT '发送给执行方的请求体',
     response_body TEXT DEFAULT NULL COMMENT '执行方返回的响应',

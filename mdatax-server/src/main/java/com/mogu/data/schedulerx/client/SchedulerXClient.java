@@ -39,6 +39,9 @@ public class SchedulerXClient {
     @Value("${schedulerx.callback-secret:mdatax-dev-secret-change-in-production}")
     private String callbackSecret;
 
+    @Value("${schedulerx.task.delay-seconds:0}")
+    private int taskDelaySeconds;
+
     private OkHttpClient httpClient;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -264,6 +267,44 @@ public class SchedulerXClient {
     }
 
     /**
+     * 查询实例详情
+     */
+    public String getInstanceDetail(String instanceId) {
+        if (!enabled || instanceId == null) {
+            return null;
+        }
+        try {
+            Request request = new Request.Builder()
+                    .url(baseUrl + "/api/v1/instances/" + instanceId)
+                    .get()
+                    .build();
+            return execute(request);
+        } catch (Exception e) {
+            log.error("[SchedulerXClient] 查询实例详情失败: instanceId={}", instanceId, e);
+            return null;
+        }
+    }
+
+    /**
+     * 查询实例的任务列表
+     */
+    public String getInstanceTasks(String instanceId) {
+        if (!enabled || instanceId == null) {
+            return null;
+        }
+        try {
+            Request request = new Request.Builder()
+                    .url(baseUrl + "/api/v1/instances/" + instanceId + "/tasks")
+                    .get()
+                    .build();
+            return execute(request);
+        } catch (Exception e) {
+            log.error("[SchedulerXClient] 查询实例任务列表失败: instanceId={}", instanceId, e);
+            return null;
+        }
+    }
+
+    /**
      * 查询 DAG 实例列表
      */
     public String listInstances(String dagId, int pageNum, int pageSize) {
@@ -427,6 +468,9 @@ public class SchedulerXClient {
         body.put("taskType", "SYNC");
         body.put("taskId", task.getId());
         body.put("secret", callbackSecret);
+        if (taskDelaySeconds > 0) {
+            body.put("delaySeconds", taskDelaySeconds);
+        }
         config.put("body", body);
         config.put("timeout", 1800);
         return config;
@@ -440,6 +484,9 @@ public class SchedulerXClient {
         body.put("taskType", "SQL");
         body.put("taskId", task.getId());
         body.put("secret", callbackSecret);
+        if (taskDelaySeconds > 0) {
+            body.put("delaySeconds", taskDelaySeconds);
+        }
         config.put("body", body);
         config.put("timeout", 600);
         return config;

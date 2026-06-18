@@ -46,8 +46,14 @@
             </template>
             <el-menu-item index="/query">SQL查询</el-menu-item>
             <el-menu-item index="/development">SQL开发</el-menu-item>
-            <el-menu-item index="/development/tasks">任务管理</el-menu-item>
-            <el-menu-item index="/workflows">工作流管理</el-menu-item>
+          </el-sub-menu>
+          <el-sub-menu index="/task-board">
+            <template #title>
+              <el-icon><Operation /></el-icon>
+              <span>任务调度</span>
+            </template>
+            <el-menu-item index="/task-board">任务看板</el-menu-item>
+            <el-menu-item index="/tasks">任务管理</el-menu-item>
           </el-sub-menu>
           <el-menu-item index="/assets">
             <el-icon><Folder /></el-icon>
@@ -94,7 +100,7 @@ import { computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '../stores/auth.js'
-import { HomeFilled, Connection, Document, Folder, Lock, Setting, ArrowDown, TrendCharts, DataAnalysis } from '@element-plus/icons-vue'
+import { HomeFilled, Connection, Document, Folder, Lock, Setting, ArrowDown, TrendCharts, DataAnalysis, Operation } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const authStore = useAuthStore()

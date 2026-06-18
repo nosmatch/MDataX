@@ -45,6 +45,9 @@ public class InternalTaskController {
     private final DolphinSchedulerClient dsClient;
     private final SchedulerXClient schedulerXClient;
 
+    @org.springframework.beans.factory.annotation.Value("${schedulerx.task.delay-seconds:0}")
+    private int defaultTaskDelaySeconds;
+
     @PostMapping("/execute")
     public Result<Void> execute(@RequestBody Map<String, Object> request) {
         // 支持两种格式：
@@ -86,6 +89,27 @@ public class InternalTaskController {
 
         // 记录工作流实例（定时调度触发时）
         recordWorkflowInstanceIfNeeded(taskId, dsInstanceId);
+
+        // 模拟长任务执行：从请求体读取 delaySeconds，优先级高于全局默认值
+        int delaySeconds = defaultTaskDelaySeconds;
+        Object delayObj = request.get("delaySeconds");
+        if (delayObj == null && bodyObj instanceof Map) {
+            delayObj = ((Map<String, Object>) bodyObj).get("delaySeconds");
+        }
+        if (delayObj != null) {
+            try {
+                delaySeconds = Integer.parseInt(delayObj.toString());
+            } catch (NumberFormatException ignored) {
+            }
+        }
+        if (delaySeconds > 0) {
+            log.info("模拟长任务，延迟 {} 秒执行: taskType={}, taskId={}", delaySeconds, taskType, taskId);
+            try {
+                Thread.sleep(delaySeconds * 1000L);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }
 
         try {
             if ("SYNC".equals(taskType)) {

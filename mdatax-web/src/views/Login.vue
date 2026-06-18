@@ -32,6 +32,13 @@
             登录
           </el-button>
         </el-form-item>
+        <el-form-item>
+          <el-alert type="info" :closable="false" show-icon>
+            <template #title>
+              测试账号: admin / admin123
+            </template>
+          </el-alert>
+        </el-form-item>
       </el-form>
     </div>
   </div>
@@ -50,8 +57,8 @@ const formRef = ref()
 const loading = ref(false)
 
 const form = reactive({
-  username: '',
-  password: ''
+  username: 'admin',
+  password: 'admin123'
 })
 
 const rules = {
