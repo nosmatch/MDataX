@@ -145,7 +145,7 @@ public interface TaskSchedulerManager {
      * @param task SQL 任务
      * @return 实例标识符
      */
-    String triggerSqlTask(SqlTask task);
+    Long triggerSqlTask(SqlTask task);
 
     /**
      * 手动触发同步任务。
@@ -153,7 +153,7 @@ public interface TaskSchedulerManager {
      * @param task 同步任务
      * @return 实例标识符
      */
-    String triggerSyncTask(SyncTask task);
+    Long triggerSyncTask(SyncTask task);
 
     /**
      * 手动触发工作流。

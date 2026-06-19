@@ -34,6 +34,7 @@ public class TaskController {
     private final TaskDependencyService taskDependencyService;
     private final com.mogu.data.integration.mapper.TaskSqlDetailMapper taskSqlDetailMapper;
     private final com.mogu.data.integration.mapper.TaskSyncDetailMapper taskSyncDetailMapper;
+    private final com.mogu.data.integration.mapper.TaskQualityDetailMapper taskQualityDetailMapper;
     private final com.mogu.data.integration.service.TaskExecutionService taskExecutionService;
 
     // ==================== 任务 CRUD ====================
@@ -95,6 +96,15 @@ public class TaskController {
             syncDetail.setTimeField(request.getTimeField());
             syncDetail.setWhereCondition(request.getWhereCondition());
             detail = syncDetail;
+        } else if ("QUALITY".equals(request.getTaskType())) {
+            com.mogu.data.integration.entity.TaskQualityDetail qualityDetail = new com.mogu.data.integration.entity.TaskQualityDetail();
+            qualityDetail.setRuleTemplate(request.getRuleTemplate());
+            qualityDetail.setDatabaseName(request.getDatabaseName());
+            qualityDetail.setTableName(request.getTableName());
+            qualityDetail.setTableId(request.getTableId());
+            qualityDetail.setColumnName(request.getColumnName());
+            qualityDetail.setCheckParams(request.getCheckParams());
+            detail = qualityDetail;
         }
 
         Long taskId = taskService.createTask(task, detail);
@@ -141,6 +151,15 @@ public class TaskController {
             syncDetail.setTimeField(request.getTimeField());
             syncDetail.setWhereCondition(request.getWhereCondition());
             detail = syncDetail;
+        } else if ("QUALITY".equals(existingTask.getTaskType())) {
+            com.mogu.data.integration.entity.TaskQualityDetail qualityDetail = new com.mogu.data.integration.entity.TaskQualityDetail();
+            qualityDetail.setRuleTemplate(request.getRuleTemplate());
+            qualityDetail.setDatabaseName(request.getDatabaseName());
+            qualityDetail.setTableName(request.getTableName());
+            qualityDetail.setTableId(request.getTableId());
+            qualityDetail.setColumnName(request.getColumnName());
+            qualityDetail.setCheckParams(request.getCheckParams());
+            detail = qualityDetail;
         }
 
         taskService.updateTask(task, detail);
@@ -189,6 +208,10 @@ public class TaskController {
             com.mogu.data.integration.entity.TaskSyncDetail syncDetail =
                     taskSyncDetailMapper.selectByTaskId(id);
             vo.setDetail(syncDetail);
+        } else if ("QUALITY".equals(task.getTaskType())) {
+            com.mogu.data.integration.entity.TaskQualityDetail qualityDetail =
+                    taskQualityDetailMapper.selectByTaskId(id);
+            vo.setDetail(qualityDetail);
         }
 
         return Result.success(vo);
@@ -260,11 +283,11 @@ public class TaskController {
      * 手动触发任务执行
      */
     @PostMapping("/{id}/execute")
-    public Result<String> executeTask(
+    public Result<Long> executeTask(
             @PathVariable Long id,
             @RequestBody(required = false) ManualExecuteRequest request) {
         Long triggerUserId = request != null ? request.getTriggerUserId() : null;
-        String executionId = taskService.executeTask(id, triggerUserId);
+        Long executionId = taskService.executeTask(id, triggerUserId);
         return Result.success(executionId);
     }
 
@@ -357,6 +380,14 @@ public class TaskController {
         return Result.success(result);
     }
 
+    /**
+     * 获取数据源的表列表（用于同步任务配置）
+     */
+    @GetMapping("/datasource/{datasourceId}/tables")
+    public Result<java.util.List<String>> getDatasourceTables(@PathVariable Long datasourceId) {
+        return Result.success(taskService.getDatasourceTables(datasourceId));
+    }
+
     // ==================== VO ====================
 
     @Data
@@ -409,6 +440,14 @@ public class TaskController {
         private String syncType;
         private String timeField;
         private String whereCondition;
+
+        // 质量监控任务字段
+        private String ruleTemplate;
+        private String databaseName;
+        private String tableName;
+        private Long tableId;
+        private String columnName;
+        private String checkParams;
     }
 
     @Data
@@ -436,6 +475,14 @@ public class TaskController {
         private String syncType;
         private String timeField;
         private String whereCondition;
+
+        // 质量监控任务字段
+        private String ruleTemplate;
+        private String databaseName;
+        private String tableName;
+        private Long tableId;
+        private String columnName;
+        private String checkParams;
     }
 
     @Data

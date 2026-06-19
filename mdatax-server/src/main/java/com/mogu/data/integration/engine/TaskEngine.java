@@ -36,4 +36,17 @@ public interface TaskEngine {
     }
 
     void executeSqlTask(Long taskId, Long dsInstanceId);
+
+    /**
+     * 执行质量监控任务。
+     *
+     * <p>由调度器触发，实际执行数据质量规则检查。
+     *
+     * @param taskId 质量监控任务ID
+     */
+    default void executeQualityTask(Long taskId) {
+        executeQualityTask(taskId, null);
+    }
+
+    void executeQualityTask(Long taskId, Long dsInstanceId);
 }

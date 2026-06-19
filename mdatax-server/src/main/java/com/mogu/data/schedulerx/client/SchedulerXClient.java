@@ -79,6 +79,33 @@ public class SchedulerXClient {
     }
 
     /**
+     * 注册质量监控任务为单节点 DAG
+     *
+     * @param task 统一任务
+     * @param detail 质量任务详情
+     * @return DAG ID
+     */
+    public String registerQualityTask(com.mogu.data.integration.entity.Task task,
+                                       com.mogu.data.integration.entity.TaskQualityDetail detail) {
+        if (!enabled) {
+            log.debug("[SchedulerXClient] 已禁用，跳过注册质量监控任务: {}", task.getId());
+            return null;
+        }
+
+        String dagId = "quality_" + task.getId();
+        Map<String, Object> dagDef = buildSingleNodeDag(
+                dagId,
+                task.getTaskName(),
+                task.getCronExpression(),
+                "QUALITY",
+                task.getId(),
+                buildQualityTaskConfig(task)
+        );
+
+        return registerOrUpdateDag(dagId, dagDef);
+    }
+
+    /**
      * 注册 SQL 任务为单节点 DAG
      *
      * @param task SQL 任务
@@ -473,6 +500,22 @@ public class SchedulerXClient {
         }
         config.put("body", body);
         config.put("timeout", 1800);
+        return config;
+    }
+
+    private Map<String, Object> buildQualityTaskConfig(com.mogu.data.integration.entity.Task task) {
+        Map<String, Object> config = new HashMap<>();
+        config.put("url", callbackUrl + "/api/internal/task/execute");
+        config.put("method", "POST");
+        Map<String, Object> body = new HashMap<>();
+        body.put("taskType", "QUALITY");
+        body.put("taskId", task.getId());
+        body.put("secret", callbackSecret);
+        if (taskDelaySeconds > 0) {
+            body.put("delaySeconds", taskDelaySeconds);
+        }
+        config.put("body", body);
+        config.put("timeout", 600);
         return config;
     }
 

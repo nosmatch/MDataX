@@ -116,6 +116,8 @@ public class InternalTaskController {
                 taskEngine.executeSyncTask(taskId, dsInstanceId);
             } else if ("SQL".equals(taskType)) {
                 taskEngine.executeSqlTask(taskId, dsInstanceId);
+            } else if ("QUALITY".equals(taskType)) {
+                taskEngine.executeQualityTask(taskId, dsInstanceId);
             } else {
                 return Result.error(400, "Unknown taskType: " + taskType);
             }

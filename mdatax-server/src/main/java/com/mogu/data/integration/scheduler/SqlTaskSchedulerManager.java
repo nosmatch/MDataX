@@ -2,11 +2,18 @@ package com.mogu.data.integration.scheduler;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mogu.data.integration.entity.SqlTask;
-import com.mogu.data.integration.util.CronUtils;
 import com.mogu.data.integration.entity.SyncTask;
+import com.mogu.data.integration.entity.Task;
+import com.mogu.data.integration.entity.TaskQualityDetail;
+import com.mogu.data.integration.entity.TaskSyncDetail;
+import com.mogu.data.integration.mapper.TaskQualityDetailMapper;
+import com.mogu.data.integration.mapper.TaskSyncDetailMapper;
+import com.mogu.data.integration.service.QualityTaskEngineService;
 import com.mogu.data.integration.service.SqlTaskEngineService;
 import com.mogu.data.integration.service.SqlTaskService;
+import com.mogu.data.integration.service.SyncEngineService;
 import com.mogu.data.integration.service.TaskExecutionService;
+import com.mogu.data.integration.util.CronUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -35,23 +42,35 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
     private final ThreadPoolTaskScheduler taskScheduler;
     private final SqlTaskService sqlTaskService;
     private final SqlTaskEngineService sqlTaskEngineService;
+    private final SyncEngineService syncEngineService;
+    private final QualityTaskEngineService qualityTaskEngineService;
     private final TaskExecutionService taskExecutionService;
-    private final com.mogu.data.integration.mapper.TaskMapper taskMapper;
+    private final TaskSyncDetailMapper taskSyncDetailMapper;
+    private final TaskQualityDetailMapper taskQualityDetailMapper;
     private final com.mogu.data.integration.mapper.SqlTaskMapper sqlTaskMapper;
+    private final com.mogu.data.integration.service.IdGeneratorService idGeneratorService;
 
     public SqlTaskSchedulerManager(
             @Qualifier("sqlTaskScheduler") ThreadPoolTaskScheduler taskScheduler,
             SqlTaskService sqlTaskService,
             SqlTaskEngineService sqlTaskEngineService,
+            SyncEngineService syncEngineService,
+            QualityTaskEngineService qualityTaskEngineService,
             TaskExecutionService taskExecutionService,
-            com.mogu.data.integration.mapper.TaskMapper taskMapper,
-            com.mogu.data.integration.mapper.SqlTaskMapper sqlTaskMapper) {
+            TaskSyncDetailMapper taskSyncDetailMapper,
+            TaskQualityDetailMapper taskQualityDetailMapper,
+            com.mogu.data.integration.mapper.SqlTaskMapper sqlTaskMapper,
+            com.mogu.data.integration.service.IdGeneratorService idGeneratorService) {
         this.taskScheduler = taskScheduler;
         this.sqlTaskService = sqlTaskService;
         this.sqlTaskEngineService = sqlTaskEngineService;
+        this.syncEngineService = syncEngineService;
+        this.qualityTaskEngineService = qualityTaskEngineService;
         this.taskExecutionService = taskExecutionService;
-        this.taskMapper = taskMapper;
+        this.taskSyncDetailMapper = taskSyncDetailMapper;
+        this.taskQualityDetailMapper = taskQualityDetailMapper;
         this.sqlTaskMapper = sqlTaskMapper;
+        this.idGeneratorService = idGeneratorService;
     }
 
     private final Map<Long, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
@@ -130,10 +149,16 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
      */
     private void executeTask(Long taskId) {
         log.info("定时触发SQL任务: taskId={}", taskId);
+
+        String executionId = generateExecutionId();
+        taskExecutionService.recordScheduleExecution(taskId, executionId, null);
+
         try {
             sqlTaskEngineService.execute(taskId);
+            taskExecutionService.finishExecution(executionId, null, null);
         } catch (Exception e) {
             log.error("定时SQL任务执行失败: taskId={}", taskId, e);
+            taskExecutionService.failExecution(executionId, e.getMessage());
         }
     }
 
@@ -206,11 +231,11 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
     }
 
     @Override
-    public String triggerSqlTask(SqlTask task) {
+    public Long triggerSqlTask(SqlTask task) {
         log.info("手动触发SQL任务: taskId={}", task.getId());
         String executionId = generateExecutionId();
         taskExecutionService.recordManualExecution(
-                task.getId(), executionId, executionId, task.getCreateUserId());
+                task.getId(), executionId, executionId.toString(), task.getCreateUserId());
         taskScheduler.execute(() -> {
             try {
                 sqlTaskEngineService.execute(task.getId());
@@ -220,11 +245,11 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
                 taskExecutionService.failExecution(executionId, e.getMessage());
             }
         });
-        return executionId;
+        return Long.parseLong(executionId);
     }
 
     @Override
-    public String triggerSyncTask(SyncTask task) {
+    public Long triggerSyncTask(SyncTask task) {
         throw new UnsupportedOperationException("SqlTaskSchedulerManager 不支持同步任务手动触发");
     }
 
@@ -277,20 +302,21 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
 
     @Override
     public void scheduleTask(com.mogu.data.integration.entity.Task task) {
-        if ("SQL".equals(task.getTaskType())) {
-            SqlTask sqlTask = sqlTaskMapper.selectById(task.getId());
-            if (sqlTask != null) {
-                scheduleSqlTask(sqlTask);
-            }
+        if (task == null) {
+            return;
+        }
+        if ("SQL".equals(task.getTaskType()) && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
+            schedule(task.getId(), task.getCronExpression());
+        } else if ("SYNC".equals(task.getTaskType()) && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
+            schedule(task.getId(), task.getCronExpression());
+        } else if ("QUALITY".equals(task.getTaskType()) && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
+            schedule(task.getId(), task.getCronExpression());
         }
     }
 
     @Override
     public void cancelTask(Long taskId) {
-        SqlTask sqlTask = sqlTaskMapper.selectById(taskId);
-        if (sqlTask != null) {
-            cancelSqlTask(taskId);
-        }
+        cancel(taskId);
     }
 
     @Override
@@ -304,6 +330,41 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
         if (task == null) {
             throw new IllegalArgumentException("任务不能为空");
         }
+        if ("SQL".equals(task.getTaskType())) {
+            Long result = triggerUnifiedSqlTask(task);
+            return result != null ? result.toString() : null;
+        } else if ("SYNC".equals(task.getTaskType())) {
+            Long result = triggerUnifiedSyncTask(task);
+            return result != null ? result.toString() : null;
+        } else if ("QUALITY".equals(task.getTaskType())) {
+            Long result = triggerUnifiedQualityTask(task);
+            return result != null ? result.toString() : null;
+        }
+        throw new IllegalArgumentException("不支持的任务类型: " + task.getTaskType());
+    }
+
+    private Long triggerUnifiedQualityTask(Task task) {
+        TaskQualityDetail detail = taskQualityDetailMapper.selectByTaskId(task.getId());
+        if (detail == null) {
+            throw new IllegalArgumentException("质量任务详情不存在: " + task.getId());
+        }
+        log.info("手动触发质量监控任务: taskId={}", task.getId());
+        String executionId = generateExecutionId();
+        taskExecutionService.recordManualExecution(
+                task.getId(), executionId, executionId.toString(), task.getCreateUserId());
+        taskScheduler.execute(() -> {
+            try {
+                qualityTaskEngineService.execute(task.getId());
+                taskExecutionService.finishExecution(executionId, null, null);
+            } catch (Exception e) {
+                log.error("手动触发质量监控任务失败: taskId={}, executionId={}", task.getId(), executionId, e);
+                taskExecutionService.failExecution(executionId, e.getMessage());
+            }
+        });
+        return Long.parseLong(executionId);
+    }
+
+    private Long triggerUnifiedSqlTask(Task task) {
         SqlTask sqlTask = sqlTaskMapper.selectById(task.getId());
         if (sqlTask == null) {
             throw new IllegalArgumentException("SQL任务不存在: " + task.getId());
@@ -311,8 +372,29 @@ public class SqlTaskSchedulerManager implements TaskSchedulerManager {
         return triggerSqlTask(sqlTask);
     }
 
+    private Long triggerUnifiedSyncTask(Task task) {
+        TaskSyncDetail detail = taskSyncDetailMapper.selectByTaskId(task.getId());
+        if (detail == null) {
+            throw new IllegalArgumentException("同步任务详情不存在: " + task.getId());
+        }
+        log.info("手动触发同步任务: taskId={}", task.getId());
+        String executionId = generateExecutionId();
+        taskExecutionService.recordManualExecution(
+                task.getId(), executionId, executionId.toString(), task.getCreateUserId());
+        taskScheduler.execute(() -> {
+            try {
+                syncEngineService.execute(task.getId(), null);
+                taskExecutionService.finishExecution(executionId, null, null);
+            } catch (Exception e) {
+                log.error("手动触发同步任务失败: taskId={}, executionId={}", task.getId(), executionId, e);
+                taskExecutionService.failExecution(executionId, e.getMessage());
+            }
+        });
+        return Long.parseLong(executionId);
+    }
+
     private String generateExecutionId() {
-        return "EXEC-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
+        return idGeneratorService.generateExecutionId();
     }
 
 }

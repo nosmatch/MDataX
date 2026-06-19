@@ -3,11 +3,16 @@ package com.mogu.data.integration.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.mogu.data.integration.entity.Datasource;
 import com.mogu.data.integration.entity.Task;
 import com.mogu.data.integration.entity.TaskExecution;
+import com.mogu.data.integration.entity.TaskQualityDetail;
 import com.mogu.data.integration.entity.TaskSqlDetail;
 import com.mogu.data.integration.entity.TaskSyncDetail;
+import com.mogu.data.integration.enums.DatasourceType;
+import com.mogu.data.integration.mapper.DatasourceMapper;
 import com.mogu.data.integration.mapper.TaskMapper;
+import com.mogu.data.integration.mapper.TaskQualityDetailMapper;
 import com.mogu.data.integration.mapper.TaskSqlDetailMapper;
 import com.mogu.data.integration.mapper.TaskSyncDetailMapper;
 import com.mogu.data.integration.scheduler.TaskSchedulerManager;
@@ -17,6 +22,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.sql.*;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -33,8 +40,11 @@ public class TaskService extends ServiceImpl<TaskMapper, Task> {
     private final TaskSchedulerManager schedulerManager;
     private final TaskSqlDetailMapper taskSqlDetailMapper;
     private final TaskSyncDetailMapper taskSyncDetailMapper;
+    private final TaskQualityDetailMapper taskQualityDetailMapper;
     private final TaskExecutionService taskExecutionService;
     private final TaskDependencyService taskDependencyService;
+    private final IdGeneratorService idGeneratorService;
+    private final DatasourceMapper datasourceMapper;
 
     /**
      * 分页查询任务列表
@@ -164,6 +174,10 @@ public class TaskService extends ServiceImpl<TaskMapper, Task> {
             TaskSyncDetail syncDetail = (TaskSyncDetail) detail;
             syncDetail.setTaskId(task.getId());
             taskSyncDetailMapper.insert(syncDetail);
+        } else if ("QUALITY".equals(task.getTaskType()) && detail instanceof TaskQualityDetail) {
+            TaskQualityDetail qualityDetail = (TaskQualityDetail) detail;
+            qualityDetail.setTaskId(task.getId());
+            taskQualityDetailMapper.insert(qualityDetail);
         }
 
         return task.getId();
@@ -210,6 +224,14 @@ public class TaskService extends ServiceImpl<TaskMapper, Task> {
                 taskSyncDetailMapper.updateByTaskId(syncDetail);
             } else {
                 taskSyncDetailMapper.insert(syncDetail);
+            }
+        } else if ("QUALITY".equals(task.getTaskType()) && detail instanceof TaskQualityDetail) {
+            TaskQualityDetail qualityDetail = (TaskQualityDetail) detail;
+            qualityDetail.setTaskId(task.getId());
+            if (taskQualityDetailMapper.selectByTaskId(task.getId()) != null) {
+                taskQualityDetailMapper.updateByTaskId(qualityDetail);
+            } else {
+                taskQualityDetailMapper.insert(qualityDetail);
             }
         }
 
@@ -280,7 +302,7 @@ public class TaskService extends ServiceImpl<TaskMapper, Task> {
     /**
      * 手动触发任务执行
      */
-    public String executeTask(Long taskId, Long triggerUserId) {
+    public Long executeTask(Long taskId, Long triggerUserId) {
         Task task = getById(taskId);
         if (task == null) {
             throw new IllegalArgumentException("任务不存在");
@@ -302,7 +324,7 @@ public class TaskService extends ServiceImpl<TaskMapper, Task> {
         if (existing != null) {
             log.info("任务手动触发成功: taskId={}, executionId={}, instanceId={}",
                     taskId, existing.getExecutionId(), instanceId);
-            return existing.getExecutionId();
+            return java.lang.Long.parseLong(existing.getExecutionId());
         }
 
         // 否则生成 executionId 并记录（如 DolphinScheduler 等外部调度器）
@@ -311,7 +333,7 @@ public class TaskService extends ServiceImpl<TaskMapper, Task> {
 
         log.info("任务手动触发成功: taskId={}, executionId={}, instanceId={}",
                 taskId, executionId, instanceId);
-        return executionId;
+        return java.lang.Long.parseLong(executionId);
     }
 
     /**
@@ -356,9 +378,98 @@ public class TaskService extends ServiceImpl<TaskMapper, Task> {
     }
 
     /**
-     * 生成执行ID
+     * 生成执行ID（8位数字）
      */
     private String generateExecutionId() {
-        return "EXEC-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
+        return idGeneratorService.generateExecutionId();
+    }
+
+    /**
+     * 获取数据源的表列表（用于同步任务配置）
+     */
+    public List<String> getDatasourceTables(Long datasourceId) {
+        Datasource ds = datasourceMapper.selectById(datasourceId);
+        if (ds == null || ds.getDeleted() != null && ds.getDeleted() == 1) {
+            throw new IllegalArgumentException("数据源不存在");
+        }
+        DatasourceType type = DatasourceType.of(ds.getType());
+        if (type == null) {
+            throw new IllegalArgumentException("未知的数据源类型");
+        }
+        switch (type) {
+            case MYSQL:
+                return listMySQLTables(ds);
+            case CLICKHOUSE:
+                return listClickHouseTables(ds);
+            case ELASTICSEARCH:
+                return listElasticsearchIndices(ds);
+            case KAFKA:
+                return listKafkaTopics(ds);
+            case LOCAL_EXCEL:
+                return listExcelSheets(ds);
+            default:
+                throw new IllegalArgumentException("该数据源类型不支持获取表列表");
+        }
+    }
+
+    /**
+     * 获取MySQL表列表
+     */
+    private List<String> listMySQLTables(Datasource ds) {
+        List<String> tables = new ArrayList<>();
+        try (Connection conn = DriverManager.getConnection(ds.getHost() + ":" + ds.getPort() + "/" + ds.getDatabaseName(),
+                ds.getUsername(), ds.getPassword());
+             ResultSet rs = conn.getMetaData().getTables(ds.getDatabaseName(), null, "%", new String[]{"TABLE"})) {
+            while (rs.next()) {
+                tables.add(rs.getString("TABLE_NAME"));
+            }
+        } catch (SQLException e) {
+            log.error("获取MySQL表列表失败", e);
+            throw new RuntimeException("获取MySQL表列表失败: " + e.getMessage());
+        }
+        return tables;
+    }
+
+    /**
+     * 获取ClickHouse表列表
+     */
+    private List<String> listClickHouseTables(Datasource ds) {
+        List<String> tables = new ArrayList<>();
+        try (Connection conn = DriverManager.getConnection("jdbc:clickhouse://" + ds.getHost() + ":" + ds.getPort() + "/" + ds.getDatabaseName(),
+                ds.getUsername(), ds.getPassword());
+             Statement stmt = conn.createStatement();
+             ResultSet rs = stmt.executeQuery("SHOW TABLES")) {
+            while (rs.next()) {
+                tables.add(rs.getString(1));
+            }
+        } catch (SQLException e) {
+            log.error("获取ClickHouse表列表失败", e);
+            throw new RuntimeException("获取ClickHouse表列表失败: " + e.getMessage());
+        }
+        return tables;
+    }
+
+    /**
+     * 获取Elasticsearch索引列表
+     */
+    private List<String> listElasticsearchIndices(Datasource ds) {
+        // 简化实现，实际需要使用Elasticsearch客户端
+        return new ArrayList<>();
+    }
+
+    /**
+     * 获取Kafka主题列表
+     */
+    private List<String> listKafkaTopics(Datasource ds) {
+        // 简化实现，实际需要使用Kafka客户端
+        return new ArrayList<>();
+    }
+
+    /**
+     * 获取Excel工作表列表
+     */
+    private List<String> listExcelSheets(Datasource ds) {
+        // 简化实现，实际需要使用Excel处理库
+        return new ArrayList<>();
     }
 }

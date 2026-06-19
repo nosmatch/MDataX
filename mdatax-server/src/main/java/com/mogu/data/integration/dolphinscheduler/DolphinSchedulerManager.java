@@ -8,6 +8,8 @@ import com.mogu.data.integration.mapper.SqlTaskDependencyMapper;
 import com.mogu.data.integration.mapper.SqlTaskMapper;
 import com.mogu.data.integration.mapper.SqlTaskWorkflowMapper;
 import com.mogu.data.integration.mapper.SyncTaskMapper;
+import com.mogu.data.integration.mapper.TaskMapper;
+import com.mogu.data.integration.mapper.TaskSyncDetailMapper;
 import com.mogu.data.integration.scheduler.TaskSchedulerManager;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,8 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
     private final SyncTaskMapper syncTaskMapper;
     private final SqlTaskDependencyMapper sqlTaskDependencyMapper;
     private final SqlTaskWorkflowMapper sqlTaskWorkflowMapper;
+    private final TaskSyncDetailMapper taskSyncDetailMapper;
+    private final com.mogu.data.integration.mapper.TaskQualityDetailMapper taskQualityDetailMapper;
     private final com.mogu.data.integration.service.WorkflowInstanceService workflowInstanceService;
     private final com.mogu.data.integration.mapper.TaskMapper taskMapper;
 
@@ -180,21 +184,19 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
     // ==================== 手动触发 ====================
 
     @Override
-    public String triggerSqlTask(SqlTask task) {
+    public Long triggerSqlTask(SqlTask task) {
         if (task == null || task.getDsProcessCode() == null) {
             return null;
         }
-        Long instanceId = dsClient.startProcessInstance(task.getDsProcessCode());
-        return instanceId != null ? String.valueOf(instanceId) : null;
+        return dsClient.startProcessInstance(task.getDsProcessCode());
     }
 
     @Override
-    public String triggerSyncTask(SyncTask task) {
+    public Long triggerSyncTask(SyncTask task) {
         if (task == null || task.getDsProcessCode() == null) {
             return null;
         }
-        Long instanceId = dsClient.startProcessInstance(task.getDsProcessCode());
-        return instanceId != null ? String.valueOf(instanceId) : null;
+        return dsClient.startProcessInstance(task.getDsProcessCode());
     }
 
     @Override
@@ -480,6 +482,9 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
         } else if ("SYNC".equals(task.getTaskType())) {
             scheduleSyncTaskById(task.getId(), task.getTaskName(), task.getCronExpression(),
                     task.getDsProcessCode(), task.getDsScheduleId(), task.getDsTaskCode());
+        } else if ("QUALITY".equals(task.getTaskType())) {
+            scheduleQualityTaskById(task.getId(), task.getTaskName(), task.getCronExpression(),
+                    task.getDsProcessCode(), task.getDsScheduleId(), task.getDsTaskCode());
         }
     }
 
@@ -494,6 +499,8 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
             cancelSqlTaskById(task.getDsProcessCode(), task.getDsScheduleId());
         } else if ("SYNC".equals(task.getTaskType())) {
             cancelSyncTaskById(task.getDsProcessCode(), task.getDsScheduleId());
+        } else if ("QUALITY".equals(task.getTaskType())) {
+            cancelByTask(task.getDsProcessCode(), task.getDsScheduleId());
         }
     }
 
@@ -524,10 +531,75 @@ public class DolphinSchedulerManager implements TaskSchedulerManager {
 
     private void scheduleSyncTaskById(Long taskId, String taskName, String cronExpression,
                                       Long existProcessCode, Integer existScheduleId, Long existTaskCode) {
-        SyncTask syncTask = syncTaskMapper.selectById(taskId);
-        if (syncTask != null) {
-            scheduleSyncTask(syncTask);
+        com.mogu.data.integration.entity.Task task = taskMapper.selectById(taskId);
+        if (task == null) {
+            return;
         }
+        com.mogu.data.integration.entity.TaskSyncDetail detail = taskSyncDetailMapper.selectByTaskId(taskId);
+        if (detail == null) {
+            log.warn("[DolphinSchedulerManager] 同步任务详情不存在: taskId={}", taskId);
+            return;
+        }
+        SyncTask syncTask = new SyncTask();
+        syncTask.setId(task.getId());
+        syncTask.setTaskName(task.getTaskName());
+        syncTask.setDatasourceId(detail.getSourceDatasourceId());
+        syncTask.setSourceTable(detail.getSourceTable());
+        syncTask.setTargetTable(detail.getTargetTable());
+        syncTask.setSyncType(detail.getSyncType());
+        syncTask.setTimeField(detail.getTimeField());
+        syncTask.setCronExpression(task.getCronExpression());
+        syncTask.setStatus(task.getStatus());
+        syncTask.setRetryTimes(task.getRetryTimes());
+        syncTask.setRetryInterval(task.getRetryInterval());
+        syncTask.setCreateUserId(task.getCreateUserId());
+        syncTask.setDsProcessCode(existProcessCode);
+        syncTask.setDsScheduleId(existScheduleId);
+        syncTask.setDsTaskCode(existTaskCode);
+        scheduleSyncTask(syncTask);
+        // 回写调度器 ID 到统一任务表
+        task.setDsProcessCode(syncTask.getDsProcessCode());
+        task.setDsScheduleId(syncTask.getDsScheduleId());
+        task.setDsTaskCode(syncTask.getDsTaskCode());
+        taskMapper.updateById(task);
+    }
+
+    private void scheduleQualityTaskById(Long taskId, String taskName, String cronExpression,
+                                         Long existProcessCode, Integer existScheduleId, Long existTaskCode) {
+        com.mogu.data.integration.entity.Task task = taskMapper.selectById(taskId);
+        if (task == null) {
+            return;
+        }
+        com.mogu.data.integration.entity.TaskQualityDetail detail = taskQualityDetailMapper.selectByTaskId(taskId);
+        if (detail == null) {
+            log.warn("[DolphinSchedulerManager] 质量监控任务详情不存在: taskId={}", taskId);
+            return;
+        }
+
+        SyncTask compatTask = new SyncTask();
+        compatTask.setId(task.getId());
+        compatTask.setTaskName(task.getTaskName());
+        compatTask.setCronExpression(task.getCronExpression());
+        compatTask.setStatus(task.getStatus());
+        compatTask.setRetryTimes(task.getRetryTimes());
+        compatTask.setRetryInterval(task.getRetryInterval());
+        compatTask.setCreateUserId(task.getCreateUserId());
+        compatTask.setDsProcessCode(existProcessCode);
+        compatTask.setDsScheduleId(existScheduleId);
+        compatTask.setDsTaskCode(existTaskCode);
+
+        // 复用通用调度逻辑，任务类型标记为 QUALITY
+        doSchedule(task.getId(), task.getTaskName(), "QUALITY",
+                task.getCronExpression(), existProcessCode, existScheduleId, existTaskCode,
+                (code) -> compatTask.setDsProcessCode(code),
+                (id) -> compatTask.setDsScheduleId(id),
+                (code) -> compatTask.setDsTaskCode(code));
+
+        // 回写调度器 ID 到统一任务表
+        task.setDsProcessCode(compatTask.getDsProcessCode());
+        task.setDsScheduleId(compatTask.getDsScheduleId());
+        task.setDsTaskCode(compatTask.getDsTaskCode());
+        taskMapper.updateById(task);
     }
 
     private void cancelSqlTaskById(Long processCode, Integer scheduleId) {

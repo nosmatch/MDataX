@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.mogu.data.integration.mapper.TaskQualityDetailMapper">
+
+    <select id="selectByTaskId" resultType="com.mogu.data.integration.entity.TaskQualityDetail">
+        SELECT *
+        FROM task_quality_detail
+        WHERE task_id = #{taskId}
+    </select>
+
+    <update id="updateByTaskId">
+        UPDATE task_quality_detail
+        SET rule_template = #{ruleTemplate},
+            database_name = #{databaseName},
+            table_name = #{tableName},
+            table_id = #{tableId},
+            column_name = #{columnName},
+            check_params = #{checkParams},
+            update_time = NOW()
+        WHERE task_id = #{taskId}
+    </update>
+
+</mapper>

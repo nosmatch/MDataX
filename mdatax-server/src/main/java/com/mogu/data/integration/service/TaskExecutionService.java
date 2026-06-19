@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.mogu.data.integration.entity.TaskExecution;
 import com.mogu.data.integration.entity.Task;
+import com.mogu.data.integration.vo.TaskExecutionVO;
 import com.mogu.data.integration.mapper.TaskExecutionMapper;
 import com.mogu.data.integration.mapper.TaskMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -20,7 +21,9 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.UUID;
+
+import com.baomidou.mybatisplus.core.toolkit.IdWorker;
+import org.springframework.beans.BeanUtils;
 
 /**
  * 任务执行记录服务
@@ -33,11 +36,13 @@ public class TaskExecutionService extends ServiceImpl<TaskExecutionMapper, TaskE
 
     private final TaskMapper taskMapper;
     private final ApplicationEventPublisher eventPublisher;
+    private final IdGeneratorService idGeneratorService;
 
     @Autowired
-    public TaskExecutionService(TaskMapper taskMapper, ApplicationEventPublisher eventPublisher) {
+    public TaskExecutionService(TaskMapper taskMapper, ApplicationEventPublisher eventPublisher, IdGeneratorService idGeneratorService) {
         this.taskMapper = taskMapper;
         this.eventPublisher = eventPublisher;
+        this.idGeneratorService = idGeneratorService;
     }
 
     @Autowired
@@ -47,32 +52,57 @@ public class TaskExecutionService extends ServiceImpl<TaskExecutionMapper, TaskE
     /**
      * 分页查询执行记录
      */
-    public Page<TaskExecution> pageExecutions(Long taskId, String status, String triggerType,
+    public Page<TaskExecutionVO> pageExecutions(Long taskId, String status, String triggerType,
                                                Long triggerUserId, LocalDateTime startTime,
                                                LocalDateTime endTime, long page, long size) {
-        LambdaQueryWrapper<TaskExecution> wrapper = new LambdaQueryWrapper<>();
+        // 使用普通QueryWrapper并手动指定表别名
+        com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<TaskExecutionVO> wrapper =
+                new com.baomidou.mybatisplus.core.conditions.query.QueryWrapper<>();
 
         if (taskId != null) {
-            wrapper.eq(TaskExecution::getTaskId, taskId);
+            wrapper.eq("te.task_id", taskId);
         }
         if (StringUtils.hasText(status)) {
-            wrapper.eq(TaskExecution::getStatus, status);
+            wrapper.eq("te.status", status);
         }
         if (StringUtils.hasText(triggerType)) {
-            wrapper.eq(TaskExecution::getTriggerType, triggerType);
+            wrapper.eq("te.trigger_type", triggerType);
         }
         if (triggerUserId != null) {
-            wrapper.eq(TaskExecution::getTriggerUserId, triggerUserId);
+            wrapper.eq("te.trigger_user_id", triggerUserId);
         }
         if (startTime != null) {
-            wrapper.ge(TaskExecution::getStartTime, startTime);
+            wrapper.ge("te.start_time", startTime);
         }
         if (endTime != null) {
-            wrapper.le(TaskExecution::getStartTime, endTime);
+            wrapper.le("te.start_time", endTime);
         }
 
-        wrapper.orderByDesc(TaskExecution::getStartTime);
-        return page(new Page<>(page, size), wrapper);
+        return baseMapper.pageWithTaskName(new Page<>(page, size), wrapper);
+    }
+
+    /**
+     * 获取执行详情（含任务名称）
+     */
+    public TaskExecutionVO getExecutionDetailWithTask(String executionId) {
+        TaskExecution execution = lambdaQuery()
+                .eq(TaskExecution::getExecutionId, executionId)
+                .one();
+        if (execution == null) {
+            return null;
+        }
+
+        TaskExecutionVO vo = new TaskExecutionVO();
+        BeanUtils.copyProperties(execution, vo);
+
+        // 查询任务名称和类型
+        Task task = taskMapper.selectById(execution.getTaskId());
+        if (task != null) {
+            vo.setTaskName(task.getTaskName());
+            vo.setTaskType(task.getTaskType());
+        }
+
+        return vo;
     }
 
     /**
@@ -80,6 +110,8 @@ public class TaskExecutionService extends ServiceImpl<TaskExecutionMapper, TaskE
      */
     public Map<String, Object> getStatistics(LocalDateTime startTime, LocalDateTime endTime) {
         Map<String, Object> result = new HashMap<>();
+
+        log.info("查询执行记录统计: startTime={}, endTime={}", startTime, endTime);
 
         LambdaQueryWrapper<TaskExecution> wrapper = new LambdaQueryWrapper<>();
         if (startTime != null) {
@@ -91,15 +123,19 @@ public class TaskExecutionService extends ServiceImpl<TaskExecutionMapper, TaskE
         long total = count(wrapper);
         result.put("total", total);
 
+        log.info("总执行记录数: total={}", total);
+
         for (String status : new String[]{"PENDING", "RUNNING", "SUCCESS", "FAILED", "TIMEOUT", "KILLED"}) {
             result.put(status.toLowerCase() + "Count", 0L);
         }
         for (TaskExecutionMapper.StatusCount sc : baseMapper.countByStatus(startTime, endTime)) {
             if (StringUtils.hasText(sc.getStatus())) {
                 result.put(sc.getStatus().toLowerCase() + "Count", sc.getCount());
+                log.info("状态统计: status={}, count={}", sc.getStatus(), sc.getCount());
             }
         }
 
+        log.info("统计结果: {}", result);
         return result;
     }
 
@@ -294,7 +330,7 @@ public class TaskExecutionService extends ServiceImpl<TaskExecutionMapper, TaskE
     }
 
     private String generateExecutionId() {
-        return "EX" + UUID.randomUUID().toString().replace("-", "").toUpperCase();
+        return idGeneratorService.generateExecutionId();
     }
 
     /**

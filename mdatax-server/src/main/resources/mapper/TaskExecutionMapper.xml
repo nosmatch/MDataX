@@ -29,4 +29,15 @@
         GROUP BY status
     </select>
 
+    <select id="pageWithTaskName" resultType="com.mogu.data.integration.vo.TaskExecutionVO">
+        SELECT te.*, t.task_name AS taskName, t.task_type AS taskType, t.status AS task_status
+        FROM task_execution te
+        LEFT JOIN task t ON te.task_id = t.id AND t.deleted = 0
+        WHERE te.deleted = 0
+        <if test="ew != null and ew.sqlSegment != null and ew.sqlSegment != ''">
+            AND ${ew.sqlSegment}
+        </if>
+        ORDER BY te.start_time DESC
+    </select>
+
 </mapper>

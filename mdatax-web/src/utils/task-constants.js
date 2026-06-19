@@ -24,17 +24,20 @@ export const TASK_STATUS_TAG_TYPE = {
 // 任务类型
 export const TASK_TYPE = {
   SQL: 'SQL',
-  SYNC: 'SYNC'
+  SYNC: 'SYNC',
+  QUALITY: 'QUALITY'
 }
 
 export const TASK_TYPE_LABEL = {
   [TASK_TYPE.SQL]: 'SQL任务',
-  [TASK_TYPE.SYNC]: '同步任务'
+  [TASK_TYPE.SYNC]: '同步任务',
+  [TASK_TYPE.QUALITY]: '质量监控任务'
 }
 
 export const TASK_TYPE_TAG_TYPE = {
   [TASK_TYPE.SQL]: 'success',
-  [TASK_TYPE.SYNC]: 'primary'
+  [TASK_TYPE.SYNC]: 'primary',
+  [TASK_TYPE.QUALITY]: 'warning'
 }
 
 // 执行状态
@@ -102,6 +105,31 @@ export const SYNC_TYPE_LABEL = {
   [SYNC_TYPE.INCR]: '增量同步'
 }
 
+// 质量规则模板
+export const QUALITY_RULE_TEMPLATE = {
+  NULL_CHECK: 'NULL_CHECK',
+  ROW_COUNT_CHECK: 'ROW_COUNT_CHECK',
+  ROW_COUNT_FLUCTUATION: 'ROW_COUNT_FLUCTUATION',
+  UNIQUE_CHECK: 'UNIQUE_CHECK',
+  ENUM_CHECK: 'ENUM_CHECK',
+  REGEX_CHECK: 'REGEX_CHECK',
+  NUMERIC_RANGE_CHECK: 'NUMERIC_RANGE_CHECK',
+  DATE_RANGE_CHECK: 'DATE_RANGE_CHECK',
+  BUSINESS_RULE: 'BUSINESS_RULE'
+}
+
+export const QUALITY_RULE_TEMPLATE_LABEL = {
+  [QUALITY_RULE_TEMPLATE.NULL_CHECK]: '空值检查',
+  [QUALITY_RULE_TEMPLATE.ROW_COUNT_CHECK]: '行数检查',
+  [QUALITY_RULE_TEMPLATE.ROW_COUNT_FLUCTUATION]: '行数波动检查',
+  [QUALITY_RULE_TEMPLATE.UNIQUE_CHECK]: '唯一性检查',
+  [QUALITY_RULE_TEMPLATE.ENUM_CHECK]: '枚举值检查',
+  [QUALITY_RULE_TEMPLATE.REGEX_CHECK]: '正则检查',
+  [QUALITY_RULE_TEMPLATE.NUMERIC_RANGE_CHECK]: '数值范围检查',
+  [QUALITY_RULE_TEMPLATE.DATE_RANGE_CHECK]: '日期范围检查',
+  [QUALITY_RULE_TEMPLATE.BUSINESS_RULE]: '业务规则检查'
+}
+
 // 依赖类型
 export const DEPENDENCY_TYPE = {
   SUCCESS: 'SUCCESS',
@@ -110,13 +138,13 @@ export const DEPENDENCY_TYPE = {
 }
 
 export const DEPENDENCY_TYPE_LABEL = {
-  [DEPENDENCY_TYPE.SUCCESS]: '成功触发',
-  [DEPENDENCY_TYPE.FAILED]: '失败触发',
-  [DEPENDENCY_TYPE.ANY]: '任意触发'
+  'SUCCESS': '成功触发',
+  'FAILED': '失败触发',
+  'ANY': '任意触发'
 }
 
 export const DEPENDENCY_TYPE_TAG_TYPE = {
-  [DEPENDENCY_TYPE.SUCCESS]: 'success',
-  [DEPENDENCY_TYPE.FAILED]: 'danger',
-  [DEPENDENCY_TYPE.ANY]: 'warning'
+  'SUCCESS': 'success',
+  'FAILED': 'danger',
+  'ANY': 'warning'
 }

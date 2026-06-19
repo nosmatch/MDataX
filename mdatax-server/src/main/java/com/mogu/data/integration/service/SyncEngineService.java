@@ -6,9 +6,12 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.mogu.data.integration.entity.Datasource;
 import com.mogu.data.integration.entity.SyncTask;
 import com.mogu.data.integration.entity.SyncTaskLog;
+import com.mogu.data.integration.entity.Task;
+import com.mogu.data.integration.entity.TaskSyncDetail;
 import com.mogu.data.integration.enums.DatasourceType;
 import com.mogu.data.integration.mapper.DatasourceMapper;
-import com.mogu.data.integration.mapper.SyncTaskMapper;
+import com.mogu.data.integration.mapper.TaskMapper;
+import com.mogu.data.integration.mapper.TaskSyncDetailMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Credentials;
@@ -47,7 +50,8 @@ public class SyncEngineService {
 
     private final JdbcTemplate clickHouseJdbcTemplate;
     private final DatasourceMapper datasourceMapper;
-    private final SyncTaskMapper syncTaskMapper;
+    private final TaskMapper taskMapper;
+    private final TaskSyncDetailMapper taskSyncDetailMapper;
     private final SyncTaskLogService syncTaskLogService;
 
     private static final int BATCH_SIZE = 5000;
@@ -56,16 +60,35 @@ public class SyncEngineService {
     /**
      * 执行同步任务
      *
-     * @param taskId       同步任务ID
+     * @param taskId       统一任务ID
      * @param dsInstanceId DolphinScheduler 流程实例ID（DS 触发时传入，手动执行传 null）
      */
     public void execute(Long taskId, Long dsInstanceId) {
-        SyncTask task = syncTaskMapper.selectById(taskId);
+        Task task = taskMapper.selectById(taskId);
         if (task == null || task.getDeleted() != null && task.getDeleted() == 1) {
             throw new IllegalArgumentException("任务不存在");
         }
+        if (!"SYNC".equals(task.getTaskType())) {
+            throw new IllegalArgumentException("任务类型不是同步任务: " + task.getTaskType());
+        }
 
-        Datasource ds = datasourceMapper.selectById(task.getDatasourceId());
+        TaskSyncDetail detail = taskSyncDetailMapper.selectByTaskId(taskId);
+        if (detail == null) {
+            throw new IllegalArgumentException("同步任务详情不存在");
+        }
+
+        // 构造兼容的 SyncTask 对象用于复用原有执行逻辑
+        SyncTask syncTask = new SyncTask();
+        syncTask.setId(task.getId());
+        syncTask.setTaskName(task.getTaskName());
+        syncTask.setDatasourceId(detail.getSourceDatasourceId());
+        syncTask.setSourceTable(detail.getSourceTable());
+        syncTask.setTargetTable(detail.getTargetTable());
+        syncTask.setSyncType(detail.getSyncType());
+        syncTask.setTimeField(detail.getTimeField());
+        syncTask.setCreateUserId(task.getCreateUserId());
+
+        Datasource ds = datasourceMapper.selectById(detail.getSourceDatasourceId());
         if (ds == null || ds.getDeleted() != null && ds.getDeleted() == 1) {
             throw new IllegalArgumentException("数据源不存在");
         }
@@ -79,26 +102,26 @@ public class SyncEngineService {
             }
 
             // 1. 获取源表结构
-            List<ColumnInfo> columns = fetchColumns(ds, task.getSourceTable(), type);
+            List<ColumnInfo> columns = fetchColumns(ds, syncTask.getSourceTable(), type);
             if (columns.isEmpty()) {
-                throw new IllegalArgumentException("来源表不存在或无字段: " + task.getSourceTable());
+                throw new IllegalArgumentException("来源表不存在或无字段: " + syncTask.getSourceTable());
             }
 
             // 2. 自动创建/更新ClickHouse目标表
-            createOrUpdateClickHouseTable(task.getTargetTable(), columns);
+            createOrUpdateClickHouseTable(syncTask.getTargetTable(), columns);
 
             // 3. 按类型执行同步
-            if ("FULL".equalsIgnoreCase(task.getSyncType())) {
-                rowCount = doFullSync(ds, task, columns, type);
-            } else if ("INCREMENTAL".equalsIgnoreCase(task.getSyncType())) {
-                rowCount = doIncrementalSync(ds, task, columns, type);
+            if ("FULL".equalsIgnoreCase(syncTask.getSyncType())) {
+                rowCount = doFullSync(ds, syncTask, columns, type);
+            } else if ("INCREMENTAL".equalsIgnoreCase(syncTask.getSyncType()) || "INCR".equalsIgnoreCase(syncTask.getSyncType())) {
+                rowCount = doIncrementalSync(ds, syncTask, columns, type);
             } else {
-                throw new IllegalArgumentException("不支持的同步类型: " + task.getSyncType());
+                throw new IllegalArgumentException("不支持的同步类型: " + syncTask.getSyncType());
             }
 
             // 4. 更新任务最后同步时间
-            task.setLastSyncTime(LocalDateTime.now());
-            syncTaskMapper.updateById(task);
+            detail.setLastSyncTime(LocalDateTime.now());
+            taskSyncDetailMapper.updateById(detail);
 
             syncTaskLogService.finishLog(taskLog.getId(), "SUCCESS", "同步成功，共 " + rowCount + " 条", rowCount);
             log.info("同步任务完成: taskId={}, 行数={}", taskId, rowCount);

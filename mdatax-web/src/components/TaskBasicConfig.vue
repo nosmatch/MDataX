@@ -61,6 +61,17 @@
         <el-descriptions-item label="时间字段">{{ detail.timeField || '-' }}</el-descriptions-item>
         <el-descriptions-item label="过滤条件" :span="2">{{ detail.whereCondition || '-' }}</el-descriptions-item>
       </el-descriptions>
+
+      <el-descriptions v-else-if="task.taskType === TASK_TYPE.QUALITY" :column="2" border>
+        <el-descriptions-item label="规则模板">{{ QUALITY_RULE_TEMPLATE_LABEL[detail.ruleTemplate] || detail.ruleTemplate }}</el-descriptions-item>
+        <el-descriptions-item label="数据库名">{{ detail.databaseName }}</el-descriptions-item>
+        <el-descriptions-item label="表名">{{ detail.tableName }}</el-descriptions-item>
+        <el-descriptions-item label="表ID">{{ detail.tableId }}</el-descriptions-item>
+        <el-descriptions-item label="字段名">{{ detail.columnName || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="检查参数" :span="2">
+          <pre class="sql-content">{{ detail.checkParams || '-' }}</pre>
+        </el-descriptions-item>
+      </el-descriptions>
     </el-card>
   </div>
 </template>
@@ -75,7 +86,8 @@ import {
   TASK_STATUS_LABEL,
   TASK_TYPE,
   TASK_TYPE_LABEL,
-  SYNC_TYPE_LABEL
+  SYNC_TYPE_LABEL,
+  QUALITY_RULE_TEMPLATE_LABEL
 } from '../utils/task-constants.js'
 
 const props = defineProps({

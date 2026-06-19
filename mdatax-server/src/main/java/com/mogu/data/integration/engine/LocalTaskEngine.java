@@ -1,5 +1,6 @@
 package com.mogu.data.integration.engine;
 
+import com.mogu.data.integration.service.QualityTaskEngineService;
 import com.mogu.data.integration.service.SqlTaskEngineService;
 import com.mogu.data.integration.service.SyncEngineService;
 import lombok.RequiredArgsConstructor;
@@ -21,6 +22,7 @@ public class LocalTaskEngine implements TaskEngine {
 
     private final SyncEngineService syncEngineService;
     private final SqlTaskEngineService sqlTaskEngineService;
+    private final QualityTaskEngineService qualityTaskEngineService;
 
     @Override
     public void executeSyncTask(Long taskId, Long dsInstanceId) {
@@ -34,5 +36,12 @@ public class LocalTaskEngine implements TaskEngine {
         log.info("[LocalTaskEngine] 开始执行 SQL 任务: taskId={}, dsInstanceId={}", taskId, dsInstanceId);
         sqlTaskEngineService.execute(taskId, dsInstanceId);
         log.info("[LocalTaskEngine] SQL 任务执行完成: taskId={}", taskId);
+    }
+
+    @Override
+    public void executeQualityTask(Long taskId, Long dsInstanceId) {
+        log.info("[LocalTaskEngine] 开始执行质量监控任务: taskId={}, dsInstanceId={}", taskId, dsInstanceId);
+        qualityTaskEngineService.execute(taskId);
+        log.info("[LocalTaskEngine] 质量监控任务执行完成: taskId={}", taskId);
     }
 }

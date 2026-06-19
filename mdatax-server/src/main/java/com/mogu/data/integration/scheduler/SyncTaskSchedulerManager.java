@@ -3,10 +3,13 @@ package com.mogu.data.integration.scheduler;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mogu.data.integration.entity.SqlTask;
 import com.mogu.data.integration.entity.SyncTask;
-import com.mogu.data.integration.util.CronUtils;
+import com.mogu.data.integration.entity.Task;
+import com.mogu.data.integration.entity.TaskSyncDetail;
+import com.mogu.data.integration.mapper.TaskMapper;
+import com.mogu.data.integration.mapper.TaskSyncDetailMapper;
 import com.mogu.data.integration.service.SyncEngineService;
-import com.mogu.data.integration.service.SyncTaskService;
 import com.mogu.data.integration.service.TaskExecutionService;
+import com.mogu.data.integration.util.CronUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -33,31 +36,34 @@ import java.util.concurrent.ScheduledFuture;
 public class SyncTaskSchedulerManager implements TaskSchedulerManager {
 
     private final ThreadPoolTaskScheduler taskScheduler;
-    private final SyncTaskService syncTaskService;
     private final SyncEngineService syncEngineService;
     private final TaskExecutionService taskExecutionService;
-    private final com.mogu.data.integration.mapper.TaskMapper taskMapper;
+    private final TaskMapper taskMapper;
+    private final TaskSyncDetailMapper taskSyncDetailMapper;
     private final com.mogu.data.integration.mapper.SyncTaskMapper syncTaskMapper;
+    private final com.mogu.data.integration.service.IdGeneratorService idGeneratorService;
 
     public SyncTaskSchedulerManager(
             @Qualifier("syncTaskScheduler") ThreadPoolTaskScheduler taskScheduler,
-            SyncTaskService syncTaskService,
             SyncEngineService syncEngineService,
             TaskExecutionService taskExecutionService,
-            com.mogu.data.integration.mapper.TaskMapper taskMapper,
-            com.mogu.data.integration.mapper.SyncTaskMapper syncTaskMapper) {
+            TaskMapper taskMapper,
+            TaskSyncDetailMapper taskSyncDetailMapper,
+            com.mogu.data.integration.mapper.SyncTaskMapper syncTaskMapper,
+            com.mogu.data.integration.service.IdGeneratorService idGeneratorService) {
         this.taskScheduler = taskScheduler;
-        this.syncTaskService = syncTaskService;
         this.syncEngineService = syncEngineService;
         this.taskExecutionService = taskExecutionService;
         this.taskMapper = taskMapper;
+        this.taskSyncDetailMapper = taskSyncDetailMapper;
         this.syncTaskMapper = syncTaskMapper;
+        this.idGeneratorService = idGeneratorService;
     }
 
     private final Map<Long, ScheduledFuture<?>> scheduledTasks = new ConcurrentHashMap<>();
 
     /**
-     * 应用启动时初始化所有启用状态的任务
+     * 应用启动时初始化所有启用状态的统一同步任务
      */
     @EventListener(ApplicationReadyEvent.class)
     public void initOnStartup() {
@@ -66,15 +72,17 @@ public class SyncTaskSchedulerManager implements TaskSchedulerManager {
         long size = 500;
         long totalLoaded = 0;
         while (true) {
-            Page<SyncTask> pageResult = syncTaskService.lambdaQuery()
-                    .eq(SyncTask::getDeleted, 0)
-                    .eq(SyncTask::getStatus, 1)
-                    .page(new Page<>(page, size));
-            List<SyncTask> tasks = pageResult.getRecords();
+            com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<Task> wrapper =
+                    new com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper<>();
+            wrapper.eq(Task::getDeleted, 0)
+                    .eq(Task::getStatus, 1)
+                    .eq(Task::getTaskType, "SYNC");
+            Page<Task> pageResult = taskMapper.selectPage(new Page<>(page, size), wrapper);
+            List<Task> tasks = pageResult.getRecords();
             if (tasks == null || tasks.isEmpty()) {
                 break;
             }
-            for (SyncTask task : tasks) {
+            for (Task task : tasks) {
                 if (task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
                     schedule(task.getId(), task.getCronExpression());
                 }
@@ -206,12 +214,12 @@ public class SyncTaskSchedulerManager implements TaskSchedulerManager {
     }
 
     @Override
-    public String triggerSqlTask(SqlTask task) {
+    public Long triggerSqlTask(SqlTask task) {
         throw new UnsupportedOperationException("SyncTaskSchedulerManager 不支持 SQL 任务手动触发");
     }
 
     @Override
-    public String triggerSyncTask(SyncTask task) {
+    public Long triggerSyncTask(SyncTask task) {
         log.info("手动触发同步任务: taskId={}", task.getId());
         String executionId = generateExecutionId();
         taskExecutionService.recordManualExecution(
@@ -225,7 +233,7 @@ public class SyncTaskSchedulerManager implements TaskSchedulerManager {
                 taskExecutionService.failExecution(executionId, e.getMessage());
             }
         });
-        return executionId;
+        return java.lang.Long.parseLong(executionId);
     }
 
     @Override
@@ -277,20 +285,15 @@ public class SyncTaskSchedulerManager implements TaskSchedulerManager {
 
     @Override
     public void scheduleTask(com.mogu.data.integration.entity.Task task) {
-        if ("SYNC".equals(task.getTaskType())) {
-            SyncTask syncTask = syncTaskMapper.selectById(task.getId());
-            if (syncTask != null) {
-                scheduleSyncTask(syncTask);
-            }
+        if (task != null && "SYNC".equals(task.getTaskType())
+                && task.getCronExpression() != null && !task.getCronExpression().isEmpty()) {
+            schedule(task.getId(), task.getCronExpression());
         }
     }
 
     @Override
     public void cancelTask(Long taskId) {
-        SyncTask syncTask = syncTaskMapper.selectById(taskId);
-        if (syncTask != null) {
-            cancelSyncTask(taskId);
-        }
+        cancel(taskId);
     }
 
     @Override
@@ -304,15 +307,35 @@ public class SyncTaskSchedulerManager implements TaskSchedulerManager {
         if (task == null) {
             throw new IllegalArgumentException("任务不能为空");
         }
-        SyncTask syncTask = syncTaskMapper.selectById(task.getId());
-        if (syncTask == null) {
-            throw new IllegalArgumentException("同步任务不存在: " + task.getId());
+        if (!"SYNC".equals(task.getTaskType())) {
+            throw new IllegalArgumentException("任务类型不是同步任务: " + task.getTaskType());
         }
-        return triggerSyncTask(syncTask);
+        TaskSyncDetail detail = taskSyncDetailMapper.selectByTaskId(task.getId());
+        if (detail == null) {
+            throw new IllegalArgumentException("同步任务详情不存在: " + task.getId());
+        }
+        return triggerUnifiedSyncTask(task, detail);
+    }
+
+    private String triggerUnifiedSyncTask(Task task, TaskSyncDetail detail) {
+        log.info("手动触发同步任务: taskId={}", task.getId());
+        String executionId = generateExecutionId();
+        taskExecutionService.recordManualExecution(
+                task.getId(), executionId, executionId, task.getCreateUserId());
+        taskScheduler.execute(() -> {
+            try {
+                syncEngineService.execute(task.getId(), null);
+                taskExecutionService.finishExecution(executionId, null, null);
+            } catch (Exception e) {
+                log.error("手动触发同步任务失败: taskId={}, executionId={}", task.getId(), executionId, e);
+                taskExecutionService.failExecution(executionId, e.getMessage());
+            }
+        });
+        return executionId;
     }
 
     private String generateExecutionId() {
-        return "EXEC-" + UUID.randomUUID().toString().replace("-", "").substring(0, 16).toUpperCase();
+        return idGeneratorService.generateExecutionId();
     }
 
 }

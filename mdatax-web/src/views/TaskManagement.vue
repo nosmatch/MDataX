@@ -17,6 +17,7 @@
             <el-option label="全部" value="" />
             <el-option :label="TASK_TYPE_LABEL[TASK_TYPE.SQL]" :value="TASK_TYPE.SQL" />
             <el-option :label="TASK_TYPE_LABEL[TASK_TYPE.SYNC]" :value="TASK_TYPE.SYNC" />
+            <el-option :label="TASK_TYPE_LABEL[TASK_TYPE.QUALITY]" :value="TASK_TYPE.QUALITY" />
           </el-select>
         </el-col>
         <el-col :span="3">

@@ -54,6 +54,14 @@
           {{ row.taskName || '-' }}
         </template>
       </el-table-column>
+      <el-table-column v-if="showTaskName" prop="taskType" label="类型" width="80" align="center">
+        <template #default="{ row }">
+          <el-tag v-if="row.taskType" :type="getTaskTypeTagType(row.taskType)" size="small">
+            {{ getTaskTypeLabel(row.taskType) }}
+          </el-tag>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="triggerType" label="触发方式" width="100" align="center">
         <template #default="{ row }">
           <el-tag :type="getTriggerTagType(row.triggerType)" size="small">
@@ -144,7 +152,16 @@ import {
   getTriggerTagType,
   formatDuration
 } from '../utils/execution.js'
-import { EXECUTION_STATUS, TRIGGER_TYPE } from '../utils/task-constants.js'
+import { EXECUTION_STATUS, TRIGGER_TYPE, TASK_TYPE, TASK_TYPE_LABEL, TASK_TYPE_TAG_TYPE } from '../utils/task-constants.js'
+
+// 任务类型工具函数
+const getTaskTypeLabel = (type) => {
+  return TASK_TYPE_LABEL[type] || type || '-'
+}
+
+const getTaskTypeTagType = (type) => {
+  return TASK_TYPE_TAG_TYPE[type] || 'info'
+}
 
 const props = defineProps({
   taskId: {
@@ -223,15 +240,35 @@ const fetchExecutions = async () => {
       params.taskId = props.taskId
     }
 
+    console.log('获取执行记录，参数:', params)
+
     const res = await request.get('/task-execution/page', { params })
     executionList.value = res.data.records || []
     total.value = res.data.total || 0
+
+    console.log('获取执行记录成功，记录数:', executionList.value.length, '总数:', total.value)
+
     startAutoRefresh()
   } catch (error) {
+    console.error('获取执行记录失败:', error)
     ElMessage.error(error.message || '获取执行记录失败')
   } finally {
     loading.value = false
   }
+}
+
+const updateFilters = (newFilters) => {
+  if (newFilters.status !== undefined) {
+    filters.status = newFilters.status
+  }
+  if (newFilters.triggerType !== undefined) {
+    filters.triggerType = newFilters.triggerType
+  }
+  if (newFilters.dateRange !== undefined) {
+    filters.dateRange = newFilters.dateRange
+  }
+  console.log('更新筛选条件:', filters)
+  fetchExecutions()
 }
 
 const resetFilters = () => {
@@ -288,7 +325,9 @@ watch(() => props.taskId, () => {
 
 defineExpose({
   fetchExecutions,
-  resetFilters
+  resetFilters,
+  updateFilters,
+  filters
 })
 
 onMounted(() => {

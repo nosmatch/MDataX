@@ -37,6 +37,9 @@ public class SchedulerXManager implements TaskSchedulerManager {
     private final com.mogu.data.integration.mapper.TaskMapper taskMapper;
     private final com.mogu.data.integration.mapper.TaskSqlDetailMapper taskSqlDetailMapper;
     private final com.mogu.data.integration.mapper.TaskSyncDetailMapper taskSyncDetailMapper;
+    private final com.mogu.data.integration.mapper.TaskQualityDetailMapper taskQualityDetailMapper;
+    private final com.mogu.data.integration.service.TaskExecutionService taskExecutionService;
+    private final com.mogu.data.integration.service.IdGeneratorService idGeneratorService;
 
     // ==================== 独立任务调度 ====================
 
@@ -152,19 +155,21 @@ public class SchedulerXManager implements TaskSchedulerManager {
     // ==================== 手动触发 ====================
 
     @Override
-    public String triggerSqlTask(SqlTask task) {
+    public Long triggerSqlTask(SqlTask task) {
         if (task == null || task.getSchedulerxDagId() == null) {
             return null;
         }
-        return schedulerXClient.triggerDag(task.getSchedulerxDagId());
+        String result = schedulerXClient.triggerDag(task.getSchedulerxDagId());
+        return result != null ? java.lang.Long.parseLong(result) : null;
     }
 
     @Override
-    public String triggerSyncTask(SyncTask task) {
+    public Long triggerSyncTask(SyncTask task) {
         if (task == null || task.getSchedulerxDagId() == null) {
             return null;
         }
-        return schedulerXClient.triggerDag(task.getSchedulerxDagId());
+        String result = schedulerXClient.triggerDag(task.getSchedulerxDagId());
+        return result != null ? java.lang.Long.parseLong(result) : null;
     }
 
     @Override
@@ -294,6 +299,13 @@ public class SchedulerXManager implements TaskSchedulerManager {
                     log.warn("[SchedulerXManager] 同步任务未找到详情: taskId={}", task.getId());
                 }
             }
+        } else if ("QUALITY".equals(task.getTaskType())) {
+            com.mogu.data.integration.entity.TaskQualityDetail detail = taskQualityDetailMapper.selectByTaskId(task.getId());
+            if (detail != null) {
+                scheduleNewQualityTask(task, detail);
+            } else {
+                log.warn("[SchedulerXManager] 质量监控任务未找到详情: taskId={}", task.getId());
+            }
         }
     }
 
@@ -324,26 +336,38 @@ public class SchedulerXManager implements TaskSchedulerManager {
             return null;
         }
 
+        // 生成MDataX执行ID
+        String executionId = idGeneratorService.generateExecutionId();
+        String schedulerInstanceId = null;
+
         // 如果已经有调度器ID，直接触发
         if (task.getSchedulerxDagId() != null) {
-            return schedulerXClient.triggerDag(task.getSchedulerxDagId());
+            schedulerInstanceId = schedulerXClient.triggerDag(task.getSchedulerxDagId());
+        } else {
+            // 如果没有调度器ID，尝试先调度再触发
+            log.info("[SchedulerXManager] 任务未同步到调度器，尝试自动同步: taskId={}", task.getId());
+            try {
+                // 先同步任务到调度器
+                scheduleTask(task);
+
+                // 重新加载任务获取调度器ID
+                com.mogu.data.integration.entity.Task updatedTask = taskMapper.selectById(task.getId());
+                if (updatedTask != null && updatedTask.getSchedulerxDagId() != null) {
+                    log.info("[SchedulerXManager] 自动同步成功，触发任务: taskId={}, dagId={}",
+                            task.getId(), updatedTask.getSchedulerxDagId());
+                    schedulerInstanceId = schedulerXClient.triggerDag(updatedTask.getSchedulerxDagId());
+                }
+            } catch (Exception e) {
+                log.error("[SchedulerXManager] 自动同步失败: taskId={}", task.getId(), e);
+            }
         }
 
-        // 如果没有调度器ID，尝试先调度再触发
-        log.info("[SchedulerXManager] 任务未同步到调度器，尝试自动同步: taskId={}", task.getId());
-        try {
-            // 先同步任务到调度器
-            scheduleTask(task);
-
-            // 重新加载任务获取调度器ID
-            com.mogu.data.integration.entity.Task updatedTask = taskMapper.selectById(task.getId());
-            if (updatedTask != null && updatedTask.getSchedulerxDagId() != null) {
-                log.info("[SchedulerXManager] 自动同步成功，触发任务: taskId={}, dagId={}",
-                        task.getId(), updatedTask.getSchedulerxDagId());
-                return schedulerXClient.triggerDag(updatedTask.getSchedulerxDagId());
-            }
-        } catch (Exception e) {
-            log.error("[SchedulerXManager] 自动同步失败: taskId={}", task.getId(), e);
+        if (schedulerInstanceId != null) {
+            // 记录执行记录
+            taskExecutionService.recordScheduleExecution(task.getId(), executionId, schedulerInstanceId);
+            log.info("[SchedulerXManager] 任务触发成功: taskId={}, executionId={}, schedulerInstanceId={}",
+                    task.getId(), executionId, schedulerInstanceId);
+            return executionId;
         }
 
         log.warn("[SchedulerXManager] 任务无法同步到调度器: taskId={}", task.getId());
@@ -396,7 +420,8 @@ public class SchedulerXManager implements TaskSchedulerManager {
             compatTask.setId(task.getId());
             compatTask.setTaskName(task.getTaskName());
             compatTask.setDatasourceId(detail.getSourceDatasourceId()); // 使用源数据源ID
-            compatTask.setSourceTable(detail.getSourceTable() + "->" + detail.getTargetTable()); // 简化表示
+            compatTask.setSourceTable(detail.getSourceTable());
+            compatTask.setTargetTable(detail.getTargetTable());
             compatTask.setSyncType(detail.getSyncType());
             compatTask.setTimeField(detail.getTimeField());
             compatTask.setCronExpression(task.getCronExpression());
@@ -417,6 +442,24 @@ public class SchedulerXManager implements TaskSchedulerManager {
             }
         } catch (Exception e) {
             log.error("[SchedulerXManager] 新表同步任务调度失败: taskId={}", task.getId(), e);
+        }
+    }
+
+    /**
+     * 调度新表结构的质量监控任务
+     */
+    private void scheduleNewQualityTask(com.mogu.data.integration.entity.Task task,
+                                        com.mogu.data.integration.entity.TaskQualityDetail detail) {
+        try {
+            String dagId = schedulerXClient.registerQualityTask(task, detail);
+            if (dagId != null) {
+                task.setSchedulerxDagId(dagId);
+                taskMapper.updateById(task);
+                log.info("[SchedulerXManager] 新表质量监控任务调度成功: taskId={}, dagId={}",
+                        task.getId(), dagId);
+            }
+        } catch (Exception e) {
+            log.error("[SchedulerXManager] 新表质量监控任务调度失败: taskId={}", task.getId(), e);
         }
     }
 }

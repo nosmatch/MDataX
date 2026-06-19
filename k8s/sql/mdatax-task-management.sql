@@ -11,7 +11,7 @@ CREATE TABLE task (
     id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '任务ID',
     task_code VARCHAR(64) UNIQUE NOT NULL COMMENT '任务编码（TASK-8位随机）',
     task_name VARCHAR(128) NOT NULL COMMENT '任务名称',
-    task_type VARCHAR(16) NOT NULL COMMENT '任务类型：SQL/SYNC',
+    task_type VARCHAR(16) NOT NULL COMMENT '任务类型：SQL/SYNC/QUALITY',
     description VARCHAR(512) COMMENT '任务描述',
 
     -- 责任人信息
@@ -96,11 +96,32 @@ CREATE TABLE task_sync_detail (
 
 
 -- ------------------------------
--- 4. 任务执行记录表（Job）
+-- 4. 质量监控任务详情表
+-- ------------------------------
+CREATE TABLE task_quality_detail (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    task_id BIGINT UNIQUE NOT NULL COMMENT '关联 task.id',
+    rule_template VARCHAR(32) NOT NULL COMMENT '规则模板：NULL_CHECK/ROW_COUNT_CHECK/ROW_COUNT_FLUCTUATION/UNIQUE_CHECK/ENUM_CHECK/REGEX_CHECK/NUMERIC_RANGE_CHECK/DATE_RANGE_CHECK/BUSINESS_RULE',
+    database_name VARCHAR(128) NOT NULL COMMENT '数据库名',
+    table_name VARCHAR(128) NOT NULL COMMENT '表名',
+    table_id BIGINT NOT NULL COMMENT '关联的表ID（metadata_table表）',
+    column_name VARCHAR(128) COMMENT '字段名（字段级规则）',
+    check_params TEXT COMMENT '检查参数JSON',
+
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+
+    FOREIGN KEY (task_id) REFERENCES task(id) ON DELETE CASCADE,
+    INDEX idx_table (table_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='质量监控任务详情';
+
+
+-- ------------------------------
+-- 5. 任务执行记录表（Job）
 -- ------------------------------
 CREATE TABLE task_execution (
     id BIGINT PRIMARY KEY AUTO_INCREMENT,
-    execution_id VARCHAR(64) UNIQUE NOT NULL COMMENT '执行ID（EXEC-16位随机）',
+    execution_id VARCHAR(64) UNIQUE NOT NULL COMMENT '执行ID（8位数字）',
     task_id BIGINT NOT NULL COMMENT '关联 task.id',
 
     -- 触发信息

@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.mogu.data.common.Result;
 import com.mogu.data.integration.entity.TaskExecution;
 import com.mogu.data.integration.service.TaskExecutionService;
+import com.mogu.data.integration.vo.TaskExecutionVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
@@ -28,7 +29,7 @@ public class TaskExecutionController {
      * 分页查询执行记录
      */
     @GetMapping("/page")
-    public Result<Page<TaskExecution>> pageExecutions(
+    public Result<Page<TaskExecutionVO>> pageExecutions(
             @RequestParam(defaultValue = "1") long page,
             @RequestParam(defaultValue = "10") long size,
             @RequestParam(required = false) Long taskId,
@@ -37,7 +38,7 @@ public class TaskExecutionController {
             @RequestParam(required = false) Long triggerUserId,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime startTime,
             @RequestParam(required = false) @DateTimeFormat(pattern = "yyyy-MM-dd HH:mm:ss") LocalDateTime endTime) {
-        Page<TaskExecution> result = taskExecutionService.pageExecutions(taskId, status, triggerType,
+        Page<TaskExecutionVO> result = taskExecutionService.pageExecutions(taskId, status, triggerType,
                 triggerUserId, startTime, endTime, page, size);
         return Result.success(result);
     }
@@ -46,14 +47,12 @@ public class TaskExecutionController {
      * 获取执行详情
      */
     @GetMapping("/{executionId}")
-    public Result<TaskExecution> getExecutionDetail(@PathVariable String executionId) {
-        TaskExecution execution = taskExecutionService.lambdaQuery()
-                .eq(TaskExecution::getExecutionId, executionId)
-                .one();
-        if (execution == null) {
+    public Result<TaskExecutionVO> getExecutionDetail(@PathVariable String executionId) {
+        TaskExecutionVO vo = taskExecutionService.getExecutionDetailWithTask(executionId);
+        if (vo == null) {
             return Result.error("执行记录不存在");
         }
-        return Result.success(execution);
+        return Result.success(vo);
     }
 
     /**
